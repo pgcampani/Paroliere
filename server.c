@@ -92,6 +92,90 @@
         while(1){
             //Accept
             SYSC(client_fd, accept(server_fd, (struct sockaddr*)&client_addr, &client_addr_len), "Nella accept"); 
+
+            ClientHandlerArgs *args = (ClientHandlerArgs*)malloc(sizeof(ClientHandlerArgs)); 
+            if(args == NULL){
+                perror("Nella malloc"); 
+                exit(EXIT_FAILURE); 
+            }
+
+            args->client_fd = client_fd; 
+            args->server_data = &server_data; 
+
+            pthread_t client_tid; 
+
+            SYSC(retvalue, pthread_create(&client_tid, NULL, client_handler, args), "Nella pthread_create");
+
+            SYSC(retvalue, pthread_detach(client_tid), "Nella detach");     //Libera risorse automaticamente 
         }
 
+    }
+
+    void client_handler(void *args){
+
+        ClientHandlerArgs *client_args = (ClientHandlerArgs*)args;
+        int client_fd = client_args->client_fd;
+        Server_data *server_data = client_args->server_data; 
+        
+        int retvalue; 
+
+        Messaggio *msg, *risposta; 
+
+        risposta = (Messaggio*)malloc(sizeof(Messaggio)); 
+        if(risposta == NULL){
+            perror("Nella malloc"); 
+            close(client_fd);
+            pthread_exit(NULL); 
+        }
+
+        while(1){
+            msg = (Messaggio*)malloc(sizeof(Messaggio)); 
+            if(msg == NULL){
+                perror("Nella malloc"); 
+                close(client_fd);
+                pthread_exit(NULL); 
+            }
+
+            msg->data = NULL; 
+            msg->type = '\0'; 
+            msg->length = 0; 
+
+            //Lettura messaggio da client
+            SYSC(retvalue, read(client_fd, &msg->length, sizeof(unsigned int)), "Nella read"); 
+            //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
+            if(retvalue == 0){
+                printf("Il client ha chiuso al connessione\n"); 
+                break; 
+            }
+
+            SYSC(retvalue, read(client_fd, &msg->type, sizeof(char)), "Nella read"); 
+            if(retvalue == 0){
+                printf("Il client ha chiuso la connessione\n");
+                break; 
+            }
+
+            if(msg->length > 0){
+                //La lunghezza è maggiore di 0. Alloco memoria per il contenuto del messaggio
+                msg->data = (char*)malloc(sizeof(char) * msg->length + 1);
+                if(msg->data == NULL){
+                    perror("Nella malloc"); 
+                    close(client_fd); 
+                    pthread_exit(NULL); 
+                }
+
+                SYSC(retvalue, read(client_fd, msg->data, msg->length), "Errore nella read");
+                if(retvalue == 0){
+                    printf("Il client ha chiuso la connessione");
+                    break; 
+                }
+
+                msg->data[msg->length] = '\0'; 
+            }
+
+            switch(msg->type){
+
+            }
+            
+        }
+        
     }
