@@ -69,7 +69,12 @@
             }
         }
 
-        srand(rnd_seed); 
+        if(rnd_seed == 0){
+            srand(time(NULL));
+        }
+        else{
+            srand(rnd_seed);
+        } 
 
         //Creazione del socket
         int server_fd, client_fd, retvalue; 
@@ -89,6 +94,17 @@
         //Listen 
         SYSC(retvalue, listen(server_fd, 0), "Nella listen"); 
 
+
+        //Inizializzazione dati server
+        Server_data server_data; 
+        server_data.count_giocatori = 0; 
+        server_data.thread_id = 0; 
+        server_data.data_filename = data_filename; 
+
+        genera_matrice(&server_data); 
+
+        stampa_matrice(server_data); 
+
         while(1){
             //Accept
             SYSC(client_fd, accept(server_fd, (struct sockaddr*)&client_addr, &client_addr_len), "Nella accept"); 
@@ -100,7 +116,7 @@
             }
 
             args->client_fd = client_fd; 
-            args->server_data = &server_data; 
+            args->server_data = server_data; 
 
             pthread_t client_tid; 
 
@@ -111,11 +127,11 @@
 
     }
 
-    void client_handler(void *args){
+    void *client_handler(void *args){
 
         ClientHandlerArgs *client_args = (ClientHandlerArgs*)args;
         int client_fd = client_args->client_fd;
-        Server_data *server_data = client_args->server_data; 
+        Server_data *server_data = &client_args->server_data; 
         
         int retvalue; 
 
@@ -173,7 +189,9 @@
             }
 
             switch(msg->type){
-
+                case MSG_REGISTRA_UTENTE: 
+                
+                    break; 
             }
             
         }

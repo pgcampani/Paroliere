@@ -15,6 +15,7 @@
 #define MSG_SHOW_BACHECA 'S'
 
 #define DIM_MATRIX 4
+#define MAX_BUFFER 1024
 
 typedef struct{
     char type; 
@@ -26,7 +27,8 @@ typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
     int count_giocatori; 
     pthread_t thread_id; 
-
+    char * data_filename; 
+    FILE * matrix_file; 
 }Server_data; 
 
 typedef struct{
@@ -34,3 +36,21 @@ typedef struct{
     Server_data server_data; 
 }ClientHandlerArgs; 
 
+
+
+//Prototipi funzioni
+
+//Thread
+void *client_handler(void*); 
+
+//PAROLIERE 
+void matrice_casuale(Server_data *); 
+
+void genera_matrice(Server_data *); 
+
+void stampa_matrice(Server_data); 
+
+//MESSAGGI
+Messaggio * leggi_messaggio(int); 
+
+void invia_messaggio(int, Messaggio*); 

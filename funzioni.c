@@ -16,11 +16,117 @@
 #include "types.h"
 #include "macros.h"
 
-void genera_matrice(){
+void matrice_casuale(Server_data * server_data){
 
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+            char carattere_random = 65 + rand() % 26; 
+            server_data->paroliere[i][j] = carattere_random;
+        }
+    }
 }
 
+/*void genera_matrice(Server_data * server_data){
+    int curr_position = 0;   //Posizione corrente nel file matrix.txt
+
+    FILE * matrix_file = fopen(server_data->data_filename, "r"); 
+
+    if(matrix_file != NULL){
+        fseek(matrix_file, curr_position, SEEK_SET);    //Mi posiziono nel file
+        char linea[MAX_BUFFER]; 
+
+        if(fgets(linea, sizeof(linea), matrix_file) != NULL){
+            //Prendo la riga del file e tokenizzo i caratteri
+            char *tok = strtok(linea, " "); 
+
+            for(int i = 0; i < DIM_MATRIX && tok != NULL; i++){
+                for(int j = 0; j < DIM_MATRIX && tok != NULL; j++){
+                    if(strcmp(tok, "Qu") == 0){
+                        //Se nella riga trovo Qu la tratto come un carattere speciale nella matrice
+                        server_data->paroliere[i][j] = 'Q'; 
+                    }
+                    else{
+                        //Per tutti gli altri caratteri che leggo inserisco nel paroliere
+                        server_data->paroliere[i][j] = tok[0]; 
+                    }
+                    tok = strtok(NULL, " "); 
+                }
+            }
+            //Aggiorno la posizione corrente 
+            curr_position = ftell(matrix_file); 
+        }
+        else{
+            //Genero una matrice di caratteri casuali
+            curr_position = 0; 
+            matrice_casuale(server_data); 
+        }
+        fclose(matrix_file); 
+    }
+    else{
+        //Non ho passato nessun file, genero paroliere casualmente
+        matrice_casuale(server_data); 
+    }
+}*/
+
+void genera_matrice(Server_data * server_data){
+
+
+    if(server_data->matrix_file == NULL && server_data->data_filename != NULL){
+        //Apti il file solo se il file non è già aperto
+        server_data->matrix_file = fopen(server_data->data_filename, "r");
+        if(server_data->matrix_file == NULL){
+            perror("Errore apertura file"); 
+            exit(EXIT_FAILURE); 
+        }    
+    }
+
+    if(server_data->matrix_file != NULL){
+        char linea[MAX_BUFFER]; 
+        if(fgets(linea, sizeof(linea), server_data->matrix_file) != NULL){
+            //Tokenizzo i caratteri e inserisco nella matrice
+            char *tok = strtok(linea, " ");
+            for(int i = 0; i < DIM_MATRIX && tok != NULL; i++){
+                for(int j = 0; j < DIM_MATRIX && tok != NULL; j++){
+                    if(strcmp(tok, "Qu") == 0){
+                        //Se nella riga trovo Qu lo tratto come carattere singolo nella matrice
+                        server_data->paroliere[i][j] = 'Q'; 
+                    }
+                    else{
+                        //Altrimenti scrivo direttamente il carattere nella matrice
+                        server_data->paroliere[i][j] = tok[0]; 
+                    }
+                    tok = strtok(NULL, " "); 
+                }
+            }
+        }
+        else{
+            //Ho raggiunto la fine del file 
+            fclose(server_data->matrix_file);
+            server_data->matrix_file = NULL; 
+            //Genero la matrice in modo casuale
+            matrice_casuale(server_data); 
+        }
+    }
+    else{
+        //Genero la matrice casualmente
+        matrice_casuale(server_data); 
+    }
+}
+
+void stampa_matrice(Server_data server_data){
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+            printf("%c ", server_data.paroliere[i][j]); 
+        }
+        printf("\n"); 
+        printf("\n"); 
+    }
+}
+
+
+
 Messaggio* leggi_messaggio(int file_descriptor){
+
     int retvalue; 
 
     Messaggio * msg = (Messaggio*)malloc(sizeof(Messaggio)); 
@@ -53,6 +159,7 @@ Messaggio* leggi_messaggio(int file_descriptor){
 }
 
 void invia_messaggio(int file_descriptor, Messaggio *msg){
+
     int retvalue; 
 
     SYSC(retvalue, write(file_descriptor, &msg->length, sizeof(unsigned int)), "Nella write"); 
