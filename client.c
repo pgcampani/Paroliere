@@ -19,6 +19,10 @@
 
     #define LINEA_DI_COMANDO 1024
 
+    pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
+    pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
+
+
     int main(int argc, char *argv[]){
         //Riceve da linea di comando il nome del server e la porta a cui collegarsi
 
@@ -44,14 +48,21 @@
         //Connect
         SYSC(retvalue, connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)), "Nella connect"); 
 
-        //Client_t - struttura contenente i dati del client da passare al thread
+        Client_t *client = (Client_t*)malloc(sizeof(Client_t));
+        
+        if(client == NULL){
+            perror("Nella malloc"); 
+            exit(EXIT_FAILURE); 
+        }
 
+        client->registrato = 0; 
+        client->socket_fd = socket_fd; 
+ 
         pthread_t risposta_handler;
 
         pthread_create(&risposta_handler, NULL, server_handler, (void*)client); 
 
         //Gestione comandi
-
         char input[LINEA_DI_COMANDO]; 
 
         Messaggio *msg = (Messaggio*)malloc(sizeof(Messaggio));
@@ -86,6 +97,69 @@
             char * comando = strtok(input, " "); 
             char * argomento = strtok(NULL, " "); 
 
-            //DA QUI VERIFICARE I COMANDI LETTI DA INPUT E AGIRE DI CONSEGUENZA 
+            if(!client->registrato){
+                //Se l'utente non è registrato  gli unici comandi validi sono: registra_utente, aiuto, fine
+
+                if(strcmp(comando, "registra_utente") == 0){
+                    if(argomento == NULL){
+                        printf("Nessuno username inserito. Usage: registra_utente <nome_utente>\n"); 
+                    }
+                    else{
+                        pthread_mutex_lock(&mutex_client); 
+                        msg->type = MSG_REGISTRA_UTENTE; 
+                        msg->data = argomento;
+                        msg->length = strlen(argomento); 
+                        invia_messaggio(socket_fd, msg);
+                        pthread_cond_wait(&cond_client, &mutex_client); 
+                        pthread_mutex_unlock(&mutex_client); 
+                    }
+                }
+
+                else if(strcmp(comando, "aiuto") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: aiuto\n"); 
+                    }
+                    else{
+                        printf("COMANDI:\n");
+                        printf("- registra_utente nome_utente\n");
+                        printf("- matrice - per richiedere la matrice del gioco in corso\n");
+                        printf("- parola p - per inviare una parola nel paroliere\n");
+                        printf("- fine - per uscire dal gioco\n"); 
+                    }
+                }
+
+                else if(strcmp(comando, "fine") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: fine\n"); 
+                    }
+                    else{
+                        close(client->socket_fd); 
+                        break; 
+                    }
+                }
+                
+                else{
+                    printf("Comando non valido. Digita aiuto per vedere i comandi disponibili\n"); 
+                }
+            }
+            else{
+
+            }
         }
+        pthread_join(risposta_handler, NULL);
+        close(client->socket_fd); 
+        free(client); 
+        free(msg); 
+        return 0;
+    }
+
+    
+    void *server_handler(void* args){
+
+        Client_t *client = (Client_t*)args; 
+
+        int socket_fd = client->socket_fd; 
+        int registrato = client->registrato; 
+
+
     }

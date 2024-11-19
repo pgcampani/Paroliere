@@ -17,6 +17,10 @@
     #include "macros.h"
     #include "types.h"
 
+    pthread_mutex_t mutex_array_giocatori = PTHREAD_MUTEX_INITIALIZER; 
+    pthread_mutex_t mutex_paroliere = PTHREAD_MUTEX_INITIALIZER; 
+    pthread_mutex_t mutex_counter_giocatori = PTHREAD_MUTEX_INITIALIZER; 
+
     int main(int argc, char *argv[]){
 
         //Controllo parametri
@@ -100,6 +104,7 @@
         server_data.count_giocatori = 0; 
         server_data.thread_id = 0; 
         server_data.data_filename = data_filename; 
+        server_data.matrix_file = NULL; 
 
         genera_matrice(&server_data); 
 
@@ -190,10 +195,68 @@
 
             switch(msg->type){
                 case MSG_REGISTRA_UTENTE: 
-                
+                    if(msg->length == 0 || msg->length > 10){
+                        risposta->type = MSG_ERR; 
+                        risposta->data = "La lunghezza dell'username deve essere compresa tra 1 e 10 caratteri\n";
+                        risposta->length = strlen(risposta->data); 
+                        invia_messaggio(client_fd, risposta); 
+                        continue; 
+                    }
+
+                    pthread_mutex_lock(&mutex_array_giocatori); 
+
+                    if(username_occupato(server_data, msg->data) == 1){
+                        risposta->type = MSG_ERR; 
+                        risposta->data = "Username già occupato\n"; 
+                        risposta->length = strlen(risposta->data);
+                        invia_messaggio(client_fd, risposta); 
+                        pthread_mutex_unlock(&mutex_array_giocatori);
+                        continue;
+                    }
+
+                    pthread_mutex_unlock(&mutex_array_giocatori);
+
+                    pthread_mutex_lock(&mutex_counter_giocatori); 
+
+                    if(server_data->count_giocatori > MAX_CLIENT){  
+                        risposta->type = MSG_ERR; 
+                        risposta->data = "Numero massimo giocatori raggiunto. Riprova più tardi\n";
+                        risposta->length = strlen(risposta->data); 
+                        invia_messaggio(client_fd, risposta); 
+                        pthread_mutex_unlock(&mutex_counter_giocatori); 
+                        close(client_fd); 
+                        free(msg->data); 
+                        free(msg); 
+                        pthread_exit(NULL);
+                    }
+
+                    pthread_mutex_unlock(&mutex_counter_giocatori); 
+
+                    //inserisci_utente(server_data, client_fd, msg->data);
+                    //server_data->count_giocatori++; 
+
+                    risposta->type = MSG_OK;
+                    risposta->data = "Registrazione avvenuta con successo\n"; 
+                    risposta->length = strlen(risposta->data); 
+                    invia_messaggio(client_fd, risposta); 
+
+                    free(msg->data); 
+                    break; 
+
+                default: 
+                    risposta->type = MSG_ERR; 
+                    risposta->data = "Comando non riconosciuto\n"; 
+                    risposta->length = strlen(risposta->data); 
+                    invia_messaggio(client_fd, risposta); 
+                    free(msg->data); 
                     break; 
             }
-            
+            free(msg->data); 
+            free(msg); 
         }
+
+        close(client_fd); 
+        free(risposta); 
+        pthread_exit(NULL); 
         
     }

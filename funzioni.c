@@ -70,9 +70,8 @@ void matrice_casuale(Server_data * server_data){
 
 void genera_matrice(Server_data * server_data){
 
-
     if(server_data->matrix_file == NULL && server_data->data_filename != NULL){
-        //Apti il file solo se il file non è già aperto
+        //Apri il file solo se il file non è già aperto
         server_data->matrix_file = fopen(server_data->data_filename, "r");
         if(server_data->matrix_file == NULL){
             perror("Errore apertura file"); 
@@ -92,7 +91,7 @@ void genera_matrice(Server_data * server_data){
                         server_data->paroliere[i][j] = 'Q'; 
                     }
                     else{
-                        //Altrimenti scrivo direttamente il carattere nella matrice
+                        //Scrivo direttamente il carattere nella matrice
                         server_data->paroliere[i][j] = tok[0]; 
                     }
                     tok = strtok(NULL, " "); 
@@ -103,12 +102,10 @@ void genera_matrice(Server_data * server_data){
             //Ho raggiunto la fine del file 
             fclose(server_data->matrix_file);
             server_data->matrix_file = NULL; 
-            //Genero la matrice in modo casuale
             matrice_casuale(server_data); 
         }
     }
     else{
-        //Genero la matrice casualmente
         matrice_casuale(server_data); 
     }
 }
@@ -168,4 +165,36 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
     SYSC(retvalue, write(file_descriptor, msg->data, sizeof(char) * msg->length), "Nella write"); 
 
+}
+
+int username_occupato(Server_data *server_data, char *username){
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(server_data->lista_giocatori[i].socket != -1 && strcmp(username, server_data->lista_giocatori[i].username) == 0){
+            return 1; 
+        }
+    }
+    return 0; 
+}
+
+int inserisci_utente(Server_data *server_data, int client_fd, char *username){
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(server_data->lista_giocatori[i].socket == -1){
+            server_data->lista_giocatori[i].socket = client_fd; 
+            strncpy(server_data->lista_giocatori[i].username, username, USERNAME_LENGTH); 
+            server_data->lista_giocatori[i].username[USERNAME_LENGTH] = '\0'; 
+            server_data->lista_giocatori[i].in_gioco = 1; 
+            server_data->lista_giocatori[i].connesso = 1; 
+            server_data->lista_giocatori[i].tid = pthread_self(); 
+            return 1; 
+        }
+    }
+    return 0; 
+}
+
+void stampa_lista_giocatori(Server_data *server_data){
+    for(int i = 0; i < MAX_CLIENT; i++){
+        if(server_data->lista_giocatori[i].connesso != 0){
+            printf("%s socket: %d connesso: %d tid: %ld\n", server_data->lista_giocatori[i].username,server_data->lista_giocatori[i].socket, server_data->lista_giocatori[i].connesso, server_data->lista_giocatori[i].tid);
+        }
+    }
 }

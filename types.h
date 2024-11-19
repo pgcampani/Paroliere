@@ -16,6 +16,8 @@
 
 #define DIM_MATRIX 4
 #define MAX_BUFFER 1024
+#define MAX_CLIENT 32
+#define USERNAME_LENGTH 11
 
 typedef struct{
     char type; 
@@ -23,8 +25,19 @@ typedef struct{
     char* data; 
 }Messaggio; 
 
+//Struttura dati giocatore
+typedef struct{
+    int socket; 
+    char username[USERNAME_LENGTH]; 
+    int score; 
+    int connesso; 
+    int in_gioco; 
+    pthread_t tid; 
+}Giocatore; 
+
 typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
+    Giocatore lista_giocatori[MAX_CLIENT]; 
     int count_giocatori; 
     pthread_t thread_id; 
     char * data_filename; 
@@ -36,12 +49,20 @@ typedef struct{
     Server_data server_data; 
 }ClientHandlerArgs; 
 
+typedef struct{
+    int registrato; 
+    int socket_fd; 
+}Client_t; 
+
 
 
 //Prototipi funzioni
 
-//Thread
+//Thread - server
 void *client_handler(void*); 
+
+//Thread - client
+void *server_handler(void*); 
 
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
@@ -49,6 +70,9 @@ void matrice_casuale(Server_data *);
 void genera_matrice(Server_data *); 
 
 void stampa_matrice(Server_data); 
+
+//Gestione utente
+int username_occupato(Server_data*, char*); 
 
 //MESSAGGI
 Messaggio * leggi_messaggio(int); 
