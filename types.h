@@ -59,6 +59,8 @@ typedef struct{
 //Prototipi funzioni
 
 //Thread - server
+void inizializza_server_data(Server_data*);
+
 void *client_handler(void*); 
 
 //Thread - client
@@ -78,3 +80,8 @@ int username_occupato(Server_data*, char*);
 Messaggio * leggi_messaggio(int); 
 
 void invia_messaggio(int, Messaggio*); 
+
+//Lista giocatori
+void inserisci_utente(Server_data*, int, char*); 
+
+void stampa_lista_giocatori(Server_data*);

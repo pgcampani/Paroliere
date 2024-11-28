@@ -137,7 +137,7 @@ Messaggio* leggi_messaggio(int file_descriptor){
     msg->type = '\0'; 
     msg->length = 0; 
 
-    SYSC(retvalue, read(file_descriptor, &msg->data, sizeof(unsigned int)), "Nella read"); 
+    SYSC(retvalue, read(file_descriptor, &msg->length, sizeof(unsigned int)), "Nella read"); 
 
     SYSC(retvalue, read(file_descriptor, &msg->type, sizeof(char)), "Nella read"); 
 
@@ -176,7 +176,22 @@ int username_occupato(Server_data *server_data, char *username){
     return 0; 
 }
 
-int inserisci_utente(Server_data *server_data, int client_fd, char *username){
+void inizializza_server_data(Server_data *server_data){
+    //Array giocatori
+    for(int i = 0; i < MAX_CLIENT; i++){
+        server_data->lista_giocatori[i].connesso = 0; 
+        server_data->lista_giocatori[i].in_gioco = 0; 
+        server_data->lista_giocatori[i].score = 0; 
+        server_data->lista_giocatori[i].socket = -1; 
+        server_data->lista_giocatori[i].tid = 0; 
+        server_data->lista_giocatori[i].username[0] = '\0'; 
+    }
+
+    server_data->count_giocatori = 0; 
+}
+
+
+void inserisci_utente(Server_data *server_data, int client_fd, char *username){
     for(int i = 0; i < MAX_CLIENT; i++){
         if(server_data->lista_giocatori[i].socket == -1){
             server_data->lista_giocatori[i].socket = client_fd; 
@@ -185,11 +200,11 @@ int inserisci_utente(Server_data *server_data, int client_fd, char *username){
             server_data->lista_giocatori[i].in_gioco = 1; 
             server_data->lista_giocatori[i].connesso = 1; 
             server_data->lista_giocatori[i].tid = pthread_self(); 
-            return 1; 
+            break;  
         }
     }
-    return 0; 
 }
+
 
 void stampa_lista_giocatori(Server_data *server_data){
     for(int i = 0; i < MAX_CLIENT; i++){

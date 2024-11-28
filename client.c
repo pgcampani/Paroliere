@@ -161,5 +161,32 @@
         int socket_fd = client->socket_fd; 
         int registrato = client->registrato; 
 
+        while(1){
 
+            Messaggio *msg; 
+
+            msg = leggi_messaggio(socket_fd); 
+
+            pthread_mutex_lock(&mutex_client); 
+
+            switch(msg->type){
+
+                case MSG_OK: 
+                    client->registrato = 1; 
+                    printf("%s\n", msg->data); 
+                    pthread_cond_signal(&cond_client); 
+                    break; 
+                
+                case MSG_ERR:
+                    printf("%s\n", msg->data); 
+                    pthread_cond_signal(&cond_client); 
+                    break; 
+
+            }
+
+            pthread_mutex_unlock(&mutex_client); 
+            free(msg->data); 
+            free(msg); 
+        }
+        close(socket_fd); 
     }
