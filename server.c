@@ -1,3 +1,4 @@
+    #define _XOPEN_SOURCE 700 // Per sigaction
     #include <stdio.h>
     #include <stdlib.h>
     #include <unistd.h>
@@ -19,9 +20,24 @@
 
     pthread_mutex_t mutex_array_giocatori = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_paroliere = PTHREAD_MUTEX_INITIALIZER; 
-    pthread_mutex_t mutex_counter_giocatori = PTHREAD_MUTEX_INITIALIZER; 
+
+    void sigint_handler(int signum){
+        if(signum == SIGINT){
+            printf("Chiusura server\n"); 
+        }
+    }
 
     int main(int argc, char *argv[]){
+        
+        //Segnali
+        struct sigaction sa; 
+        sa.sa_handler = sigint_handler; 
+        sigemptyset(&sa.sa_mask); 
+        sa.sa_flags = 0; 
+        if(sigaction(SIGINT, &sa, NULL) == -1){
+            perror("Errore nella configurazione di sigaction");
+            exit(EXIT_FAILURE); 
+        }
 
         //Controllo parametri
         if(argc < 3){
@@ -102,12 +118,11 @@
         //Inizializzazione dati server
         Server_data server_data; 
         inizializza_server_data(&server_data); 
-        server_data.thread_id = 0; 
         server_data.data_filename = data_filename; 
         server_data.matrix_file = NULL; 
         genera_matrice(&server_data); 
 
-        stampa_matrice(server_data); 
+        stampa_matrice(server_data.paroliere); 
 
         while(1){
             //Accept
@@ -120,7 +135,7 @@
             }
 
             args->client_fd = client_fd; 
-            args->server_data = server_data; 
+            args->server_data = &server_data; 
 
             pthread_t client_tid; 
 
@@ -135,7 +150,7 @@
 
         ClientHandlerArgs *client_args = (ClientHandlerArgs*)args;
         int client_fd = client_args->client_fd;
-        Server_data *server_data = &client_args->server_data; 
+        Server_data *server_data = client_args->server_data; 
         
         int retvalue; 
 
@@ -195,6 +210,7 @@
             switch(msg->type){
 
                 case MSG_REGISTRA_UTENTE: 
+
                     if(msg->length == 0 || msg->length > 10){
                         risposta->type = MSG_ERR; 
                         risposta->data = "La lunghezza dell'username deve essere compresa tra 1 e 10 caratteri";
@@ -203,9 +219,9 @@
                         continue; 
                     }
 
-                    pthread_mutex_lock(&mutex_array_giocatori); 
+                    pthread_mutex_lock(&mutex_array_giocatori);
 
-                    if(username_occupato(server_data, msg->data) == 1){
+                    if(username_occupato(server_data, msg->data)){
                         risposta->type = MSG_ERR; 
                         risposta->data = "Username già occupato"; 
                         risposta->length = strlen(risposta->data);
@@ -214,27 +230,19 @@
                         continue;
                     }
 
-                    //pthread_mutex_unlock(&mutex_array_giocatori);
-
-                    //pthread_mutex_lock(&mutex_counter_giocatori); 
-
                     if(server_data->count_giocatori > MAX_CLIENT){  
                         risposta->type = MSG_ERR; 
                         risposta->data = "Numero massimo giocatori raggiunto. Riprova più tardi";
                         risposta->length = strlen(risposta->data); 
                         invia_messaggio(client_fd, risposta); 
-                        pthread_mutex_unlock(&mutex_counter_giocatori); 
+                        pthread_mutex_unlock(&mutex_array_giocatori); 
                         close(client_fd); 
                         free(msg->data); 
                         free(msg); 
                         pthread_exit(NULL);
                     }
-
-                    //pthread_mutex_unlock(&mutex_counter_giocatori); 
-
-                    //pthread_mutex_lock(&mutex_array_giocatori); 
+                    
                     inserisci_utente(server_data, client_fd, msg->data);
-                    server_data->count_giocatori++; 
 
                     risposta->type = MSG_OK;
                     risposta->data = "Registrazione avvenuta con successo"; 
@@ -242,9 +250,17 @@
 
                     printf("%s\n", risposta->data);
                     invia_messaggio(client_fd, risposta); 
-                    stampa_lista_giocatori(server_data);
+                    stampa_lista_giocatori(server_data); 
+                    printf("%d\n", server_data->count_giocatori);
 
                     pthread_mutex_unlock(&mutex_array_giocatori); 
+
+                    risposta->type = MSG_MATRICE; 
+                    risposta->data = paroliere_in_stringa(server_data->paroliere); 
+                    risposta->length = strlen(risposta->data); 
+                    invia_messaggio(client_fd, risposta); 
+
+                    free(risposta->data); 
 
                     free(msg->data); 
                     break; 
@@ -263,5 +279,4 @@
         close(client_fd); 
         free(risposta); 
         pthread_exit(NULL); 
-        
     }

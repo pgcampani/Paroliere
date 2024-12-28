@@ -110,10 +110,15 @@ void genera_matrice(Server_data * server_data){
     }
 }
 
-void stampa_matrice(Server_data server_data){
+void stampa_matrice(char paroliere[DIM_MATRIX][DIM_MATRIX]){
     for(int i = 0; i < DIM_MATRIX; i++){
         for(int j = 0; j < DIM_MATRIX; j++){
-            printf("%c ", server_data.paroliere[i][j]); 
+            if(paroliere[i][j] == 'Q'){
+                printf("Qu  "); 
+            }
+            else{
+                printf("%c  ", paroliere[i][j]); 
+            }
         }
         printf("\n"); 
         printf("\n"); 
@@ -169,7 +174,7 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 int username_occupato(Server_data *server_data, char *username){
     for(int i = 0; i < MAX_CLIENT; i++){
-        if(server_data->lista_giocatori[i].socket != -1 && strcmp(username, server_data->lista_giocatori[i].username) == 0){
+        if(strcmp(username, server_data->lista_giocatori[i].username) == 0){
             return 1; 
         }
     }
@@ -193,14 +198,15 @@ void inizializza_server_data(Server_data *server_data){
 
 void inserisci_utente(Server_data *server_data, int client_fd, char *username){
     for(int i = 0; i < MAX_CLIENT; i++){
-        if(server_data->lista_giocatori[i].socket == -1){
+        if(server_data->lista_giocatori[i].connesso == 0){
             server_data->lista_giocatori[i].socket = client_fd; 
             strncpy(server_data->lista_giocatori[i].username, username, USERNAME_LENGTH); 
             server_data->lista_giocatori[i].username[USERNAME_LENGTH] = '\0'; 
             server_data->lista_giocatori[i].in_gioco = 1; 
             server_data->lista_giocatori[i].connesso = 1; 
             server_data->lista_giocatori[i].tid = pthread_self(); 
-            break;  
+            server_data->count_giocatori++; 
+            return;  
         }
     }
 }
@@ -208,8 +214,41 @@ void inserisci_utente(Server_data *server_data, int client_fd, char *username){
 
 void stampa_lista_giocatori(Server_data *server_data){
     for(int i = 0; i < MAX_CLIENT; i++){
-        if(server_data->lista_giocatori[i].connesso != 0){
-            printf("%s socket: %d connesso: %d tid: %ld\n", server_data->lista_giocatori[i].username,server_data->lista_giocatori[i].socket, server_data->lista_giocatori[i].connesso, server_data->lista_giocatori[i].tid);
+        if(server_data->lista_giocatori[i].connesso){
+            printf("%s socket: %d connesso: %d tid: %ld\n", server_data->lista_giocatori[i].username, server_data->lista_giocatori[i].socket, server_data->lista_giocatori[i].connesso, server_data->lista_giocatori[i].tid);
+        }
+    }
+}
+
+char * paroliere_in_stringa(char m[DIM_MATRIX][DIM_MATRIX]){
+
+    int size_str = DIM_MATRIX * DIM_MATRIX + 1;
+    int k = 0; //Mantiene l'indice della stringa
+    char * str = (char*)malloc(size_str * sizeof(char)); 
+
+    if(str == NULL){
+        perror("Nella malloc"); 
+        exit(EXIT_FAILURE); 
+    }
+
+    str[0] = '\0'; //Inizializzo stringa 
+
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+            str[k++] = m[i][j]; 
+        }
+    }
+    str[k] = '\0'; 
+    return str; 
+}
+
+void stringa_in_paroliere(char * str, Client_t * client){
+    int k = 0; 
+
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+           client->paroliere_client[i][j] = str[k]; 
+           k++; 
         }
     }
 }

@@ -143,7 +143,14 @@
                 }
             }
             else{
-
+                if(strcmp(comando, "registra_utente") == 0){
+                    if(argomento == NULL){
+                        printf("Comando non valido. Forse cercavi: registra_utente\n"); 
+                    }
+                    else{
+                        printf("Utente già registrato.\n"); 
+                    }
+                }
             }
         }
         pthread_join(risposta_handler, NULL);
@@ -174,13 +181,19 @@
                 case MSG_OK: 
                     client->registrato = 1; 
                     printf("%s\n", msg->data); 
-                    pthread_cond_signal(&cond_client); 
+                    //pthread_cond_signal(&cond_client); 
                     break; 
                 
                 case MSG_ERR:
                     printf("%s\n", msg->data); 
                     pthread_cond_signal(&cond_client); 
-                    break; 
+                    break;
+
+                case MSG_MATRICE: 
+                    stringa_in_paroliere(msg->data, client);
+                    stampa_matrice(client->paroliere_client); 
+                    pthread_cond_signal(&cond_client);
+                    break;  
 
             }
 
