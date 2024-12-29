@@ -1,6 +1,3 @@
-1. array in lista
-2. unica variabile per stato giocatore
-3. lista di thread
-4. while(volatile ...) main + funzione di cleanup ---- Inviare MSG_SHUTDOWN ai client per avvisarli della chiusura
+2. unica variabile per stato giocatore ??
+4. Inviare MSG_SHUTDOWN ai client per avvisarli della chiusura
 5. Ripetizone parole su lista nel client
-6. In cleanup fare free(args), args sono gli argomenti passati al client_handler

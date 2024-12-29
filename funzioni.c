@@ -16,6 +16,9 @@
 #include "types.h"
 #include "macros.h"
 
+
+//FUNZIONI PER PAROLIERE
+
 void matrice_casuale(Server_data * server_data){
 
     for(int i = 0; i < DIM_MATRIX; i++){
@@ -25,48 +28,6 @@ void matrice_casuale(Server_data * server_data){
         }
     }
 }
-
-/*void genera_matrice(Server_data * server_data){
-    int curr_position = 0;   //Posizione corrente nel file matrix.txt
-
-    FILE * matrix_file = fopen(server_data->data_filename, "r"); 
-
-    if(matrix_file != NULL){
-        fseek(matrix_file, curr_position, SEEK_SET);    //Mi posiziono nel file
-        char linea[MAX_BUFFER]; 
-
-        if(fgets(linea, sizeof(linea), matrix_file) != NULL){
-            //Prendo la riga del file e tokenizzo i caratteri
-            char *tok = strtok(linea, " "); 
-
-            for(int i = 0; i < DIM_MATRIX && tok != NULL; i++){
-                for(int j = 0; j < DIM_MATRIX && tok != NULL; j++){
-                    if(strcmp(tok, "Qu") == 0){
-                        //Se nella riga trovo Qu la tratto come un carattere speciale nella matrice
-                        server_data->paroliere[i][j] = 'Q'; 
-                    }
-                    else{
-                        //Per tutti gli altri caratteri che leggo inserisco nel paroliere
-                        server_data->paroliere[i][j] = tok[0]; 
-                    }
-                    tok = strtok(NULL, " "); 
-                }
-            }
-            //Aggiorno la posizione corrente 
-            curr_position = ftell(matrix_file); 
-        }
-        else{
-            //Genero una matrice di caratteri casuali
-            curr_position = 0; 
-            matrice_casuale(server_data); 
-        }
-        fclose(matrix_file); 
-    }
-    else{
-        //Non ho passato nessun file, genero paroliere casualmente
-        matrice_casuale(server_data); 
-    }
-}*/
 
 void genera_matrice(Server_data * server_data){
 
@@ -111,6 +72,7 @@ void genera_matrice(Server_data * server_data){
 }
 
 void stampa_matrice(char paroliere[DIM_MATRIX][DIM_MATRIX]){
+
     for(int i = 0; i < DIM_MATRIX; i++){
         for(int j = 0; j < DIM_MATRIX; j++){
             if(paroliere[i][j] == 'Q'){
@@ -125,7 +87,7 @@ void stampa_matrice(char paroliere[DIM_MATRIX][DIM_MATRIX]){
     }
 }
 
-
+//FUNZIONI PER LO SCAMBIO DI MESSAGGI
 
 Messaggio* leggi_messaggio(int file_descriptor){
 
@@ -172,52 +134,125 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 }
 
-int username_occupato(Server_data *server_data, char *username){
-    for(int i = 0; i < MAX_CLIENT; i++){
-        if(strcmp(username, server_data->lista_giocatori[i].username) == 0){
+
+
+//FUNZIONI SERVER
+
+
+void inizializza_server_data(Server_data *server_data){
+    //Lista giocatori
+    server_data->lista_giocatori = NULL; 
+    server_data->count_giocatori = 0; 
+    server_data->matrix_file = NULL; 
+    pthread_mutex_init(&server_data->mutex_server_data, NULL); 
+}
+
+
+void inserisci_giocatore(Server_data* server_data, int socket, char *username){
+
+    Giocatore *nuovo_giocatore = (Giocatore*)malloc(sizeof(Giocatore));
+    if(nuovo_giocatore == NULL){
+        perror("Errore nella malloc"); 
+        return;
+    }
+
+    nuovo_giocatore->socket = socket; 
+    strncpy(nuovo_giocatore->username, username, USERNAME_LENGTH); 
+    nuovo_giocatore->username[USERNAME_LENGTH] = '\0'; 
+    nuovo_giocatore->connesso = 1; 
+    nuovo_giocatore->in_gioco = 0; 
+    nuovo_giocatore->score = 0; 
+    nuovo_giocatore->tid = pthread_self(); 
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    nuovo_giocatore->next = server_data->lista_giocatori; 
+
+    server_data->lista_giocatori = nuovo_giocatore; 
+
+    server_data->count_giocatori++; 
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+}
+
+void cancella_giocatore(Server_data* server_data, int socket){
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *temp = server_data->lista_giocatori;
+    Giocatore *prev = NULL; 
+
+    while(temp != NULL && temp->socket != socket){
+        prev = temp; 
+        temp = temp->next; 
+    }
+
+    if(temp == NULL){
+        printf("Giocatore non trovato\n"); 
+        return; 
+    }
+
+    if(prev == NULL){
+        //Rimuovo il primo nodo
+        server_data->lista_giocatori = temp->next; 
+    }
+    else{
+        prev->next = temp->next; 
+    }
+
+    server_data->count_giocatori--; 
+    
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+
+    free(temp); 
+}
+
+void elimina_lista(Server_data* server_data){
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+    
+    Giocatore *temp = server_data->lista_giocatori; 
+
+    while(temp != NULL){
+        Giocatore *giocatore_da_rimuovere = temp;
+        temp = temp->next; 
+        free(giocatore_da_rimuovere); 
+    }
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+}
+
+int cerca_giocatore(Server_data* server_data, char* username){
+    
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *temp = server_data->lista_giocatori;
+
+    while(temp != NULL){
+        if(strcmp(temp->username, username) == 0){
+            pthread_mutex_unlock(&server_data->mutex_server_data); 
             return 1; 
         }
+        temp = temp->next; 
     }
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+
     return 0; 
 }
 
-void inizializza_server_data(Server_data *server_data){
-    //Array giocatori
-    for(int i = 0; i < MAX_CLIENT; i++){
-        server_data->lista_giocatori[i].connesso = 0; 
-        server_data->lista_giocatori[i].in_gioco = 0; 
-        server_data->lista_giocatori[i].score = 0; 
-        server_data->lista_giocatori[i].socket = -1; 
-        server_data->lista_giocatori[i].tid = 0; 
-        server_data->lista_giocatori[i].username[0] = '\0'; 
+
+void stampa_lista_giocatori(Server_data* server_data){
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *temp = server_data->lista_giocatori; 
+
+    while(temp != NULL){
+        printf("Username: %s, Socket: %d, Connesso: %d\n", temp->username, temp->socket, temp->connesso);
+        temp = temp->next; 
     }
 
-    server_data->count_giocatori = 0; 
-}
-
-
-void inserisci_utente(Server_data *server_data, int client_fd, char *username){
-    for(int i = 0; i < MAX_CLIENT; i++){
-        if(server_data->lista_giocatori[i].connesso == 0){
-            server_data->lista_giocatori[i].socket = client_fd; 
-            strncpy(server_data->lista_giocatori[i].username, username, USERNAME_LENGTH); 
-            server_data->lista_giocatori[i].username[USERNAME_LENGTH] = '\0'; 
-            server_data->lista_giocatori[i].in_gioco = 1; 
-            server_data->lista_giocatori[i].connesso = 1; 
-            server_data->lista_giocatori[i].tid = pthread_self(); 
-            server_data->count_giocatori++; 
-            return;  
-        }
-    }
-}
-
-
-void stampa_lista_giocatori(Server_data *server_data){
-    for(int i = 0; i < MAX_CLIENT; i++){
-        if(server_data->lista_giocatori[i].connesso){
-            printf("%s socket: %d connesso: %d tid: %ld\n", server_data->lista_giocatori[i].username, server_data->lista_giocatori[i].socket, server_data->lista_giocatori[i].connesso, server_data->lista_giocatori[i].tid);
-        }
-    }
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
 char * paroliere_in_stringa(char m[DIM_MATRIX][DIM_MATRIX]){
@@ -251,4 +286,17 @@ void stringa_in_paroliere(char * str, Client_t * client){
            k++; 
         }
     }
+}
+
+//FUNZIONE DI CLEANUP
+void cleanup(Server_data *server_data){
+
+    if(server_data->matrix_file){
+        free(server_data->matrix_file); 
+    }
+
+    elimina_lista(server_data); 
+    //invia_shtudown
+
+    pthread_mutex_destroy(&server_data->mutex_server_data); 
 }

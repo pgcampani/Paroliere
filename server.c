@@ -18,11 +18,14 @@
     #include "macros.h"
     #include "types.h"
 
-    pthread_mutex_t mutex_array_giocatori = PTHREAD_MUTEX_INITIALIZER; 
-    pthread_mutex_t mutex_paroliere = PTHREAD_MUTEX_INITIALIZER; 
+    volatile sig_atomic_t running = 1; 
+    pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER;
 
     void sigint_handler(int signum){
         if(signum == SIGINT){
+            pthread_mutex_lock(&mutex_running); 
+            running = 0; 
+            pthread_mutex_unlock(&mutex_running); 
             printf("Chiusura server\n"); 
         }
     }
@@ -119,19 +122,31 @@
         Server_data server_data; 
         inizializza_server_data(&server_data); 
         server_data.data_filename = data_filename; 
-        server_data.matrix_file = NULL; 
         genera_matrice(&server_data); 
 
         stampa_matrice(server_data.paroliere); 
 
-        while(1){
-            //Accept
-            SYSC(client_fd, accept(server_fd, (struct sockaddr*)&client_addr, &client_addr_len), "Nella accept"); 
+        while(running){
 
             ClientHandlerArgs *args = (ClientHandlerArgs*)malloc(sizeof(ClientHandlerArgs)); 
             if(args == NULL){
                 perror("Nella malloc"); 
                 exit(EXIT_FAILURE); 
+            }
+
+            //Accept
+            client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_addr_len);
+            if(client_fd == -1){
+                pthread_mutex_lock(&mutex_running); 
+                if(running == 0){
+                    free(args);
+                    pthread_mutex_unlock(&mutex_running);  
+                    break; 
+                }
+                pthread_mutex_unlock(&mutex_running); 
+                perror("Nella accept"); 
+                free(args); 
+                continue; 
             }
 
             args->client_fd = client_fd; 
@@ -141,9 +156,13 @@
 
             SYSC(retvalue, pthread_create(&client_tid, NULL, client_handler, args), "Nella pthread_create");
 
-            SYSC(retvalue, pthread_detach(client_tid), "Nella detach");     //Libera risorse automaticamente 
         }
 
+        printf("STO PER FARE CLEANUP\n"); 
+        cleanup(&server_data); 
+        printf("FATTA CLEANUP\n"); 
+
+        close(server_fd); 
     }
 
     void *client_handler(void *args){
@@ -164,6 +183,14 @@
         }
 
         while(1){
+
+            pthread_mutex_lock(&mutex_running);
+            if(!running){
+                pthread_mutex_unlock(&mutex_running); 
+                break;
+            }
+            pthread_mutex_unlock(&mutex_running); 
+
             msg = (Messaggio*)malloc(sizeof(Messaggio)); 
             if(msg == NULL){
                 perror("Nella malloc"); 
@@ -182,13 +209,13 @@
                 printf("Il client ha chiuso al connessione\n"); 
                 break; 
             }
-
+            
             SYSC(retvalue, read(client_fd, &msg->type, sizeof(char)), "Nella read"); 
             if(retvalue == 0){
                 printf("Il client ha chiuso la connessione\n");
                 break; 
             }
-
+            
             if(msg->length > 0){
                 //La lunghezza è maggiore di 0. Alloco memoria per il contenuto del messaggio
                 msg->data = (char*)malloc(sizeof(char) * msg->length + 1);
@@ -219,30 +246,31 @@
                         continue; 
                     }
 
-                    pthread_mutex_lock(&mutex_array_giocatori);
-
-                    if(username_occupato(server_data, msg->data)){
+                    if(cerca_giocatore(server_data, msg->data)){
                         risposta->type = MSG_ERR; 
                         risposta->data = "Username già occupato"; 
                         risposta->length = strlen(risposta->data);
                         invia_messaggio(client_fd, risposta); 
-                        pthread_mutex_unlock(&mutex_array_giocatori);
                         continue;
                     }
+
+                    pthread_mutex_lock(&server_data->mutex_server_data); 
 
                     if(server_data->count_giocatori > MAX_CLIENT){  
                         risposta->type = MSG_ERR; 
                         risposta->data = "Numero massimo giocatori raggiunto. Riprova più tardi";
                         risposta->length = strlen(risposta->data); 
                         invia_messaggio(client_fd, risposta); 
-                        pthread_mutex_unlock(&mutex_array_giocatori); 
+                        pthread_mutex_unlock(&server_data->mutex_server_data); 
                         close(client_fd); 
                         free(msg->data); 
                         free(msg); 
                         pthread_exit(NULL);
                     }
+
+                    pthread_mutex_unlock(&server_data->mutex_server_data); 
                     
-                    inserisci_utente(server_data, client_fd, msg->data);
+                    inserisci_giocatore(server_data, client_fd, msg->data);
 
                     risposta->type = MSG_OK;
                     risposta->data = "Registrazione avvenuta con successo"; 
@@ -252,8 +280,6 @@
                     invia_messaggio(client_fd, risposta); 
                     stampa_lista_giocatori(server_data); 
                     printf("%d\n", server_data->count_giocatori);
-
-                    pthread_mutex_unlock(&mutex_array_giocatori); 
 
                     risposta->type = MSG_MATRICE; 
                     risposta->data = paroliere_in_stringa(server_data->paroliere); 
@@ -275,7 +301,6 @@
             }
             free(msg); 
         }
-
         close(client_fd); 
         free(risposta); 
         pthread_exit(NULL); 

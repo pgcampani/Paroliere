@@ -26,7 +26,7 @@ typedef struct{
 }Messaggio; 
 
 //Struttura dati giocatore
-typedef struct{
+typedef struct nodoG{
     int socket; 
     char username[USERNAME_LENGTH]; 
     int score; 
@@ -34,14 +34,16 @@ typedef struct{
     int connesso;
     int in_gioco; 
     pthread_t tid; 
+    struct nodoG * next; 
 }Giocatore; 
-
+ 
 typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
-    Giocatore lista_giocatori[MAX_CLIENT]; 
+    Giocatore *lista_giocatori; 
     int count_giocatori; 
     char * data_filename; 
     FILE * matrix_file; 
+    pthread_mutex_t mutex_server_data; 
 }Server_data; 
 
 typedef struct{
@@ -54,7 +56,6 @@ typedef struct{
     int socket_fd; 
     char paroliere_client[DIM_MATRIX][DIM_MATRIX]; 
 }Client_t; 
-
 
 
 //Prototipi funzioni
@@ -79,7 +80,7 @@ char * paroliere_in_stringa(char [DIM_MATRIX][DIM_MATRIX]);
 void stringa_in_paroliere(char *, Client_t*); 
 
 //Gestione utente
-int username_occupato(Server_data*, char*); 
+int cerca_giocatore(Server_data*, char*); 
 
 //MESSAGGI
 Messaggio * leggi_messaggio(int); 
@@ -87,6 +88,11 @@ Messaggio * leggi_messaggio(int);
 void invia_messaggio(int, Messaggio*); 
 
 //Lista giocatori
-void inserisci_utente(Server_data*, int, char*); 
+void inserisci_giocatore(Server_data*, int, char*); 
 
 void stampa_lista_giocatori(Server_data*);
+
+void elimina_lista(Server_data*); 
+
+
+void cleanup(Server_data*);
