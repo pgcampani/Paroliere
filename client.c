@@ -1,3 +1,4 @@
+    #define _XOPEN_SOURCE 700 // Per sigaction
     #include <stdio.h>
     #include <stdlib.h>
     #include <unistd.h>
@@ -19,9 +20,10 @@
 
     #define LINEA_DI_COMANDO 1024
 
+    volatile sig_atomic_t exit_signal = 0; 
+    pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
     pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
-
 
     int main(int argc, char *argv[]){
         //Riceve da linea di comando il nome del server e la porta a cui collegarsi
@@ -79,12 +81,23 @@
         printf("- fine - per uscire dal gioco\n"); 
 
         while(1){
-            printf("[PROMPT PAROLIERE]-->"); 
+
+            pthread_mutex_lock(&mutex_client);
+            printf("[PROMPT PAROLIERE]-->");
+            fflush(stdout);
+            pthread_mutex_unlock(&mutex_client);
 
             if(fgets(input, sizeof(input), stdin) == NULL){
                 printf("Errore lettura comando\n");
-                continue; 
+                continue;
+            }            
+            
+            pthread_mutex_lock(&mutex_running);
+            if(exit_signal){
+                pthread_mutex_unlock(&mutex_running); 
+                break; 
             }
+            pthread_mutex_unlock(&mutex_running); 
 
             size_t len = strlen(input); //Prende la lunghezza del comando letto in input
 
@@ -96,6 +109,11 @@
             //Token
             char * comando = strtok(input, " "); 
             char * argomento = strtok(NULL, " "); 
+
+            if(comando == NULL){
+                printf("Nessun comando inserito\n"); 
+                continue; 
+            }
 
             if(!client->registrato){
                 //Se l'utente non è registrato  gli unici comandi validi sono: registra_utente, aiuto, fine
@@ -133,6 +151,7 @@
                         printf("Comando non valido. Forse cercavi: fine\n"); 
                     }
                     else{
+                        pthread_mutex_unlock(&mutex_client); 
                         close(client->socket_fd); 
                         break; 
                     }
@@ -181,7 +200,6 @@
                 case MSG_OK: 
                     client->registrato = 1; 
                     printf("%s\n", msg->data); 
-                    //pthread_cond_signal(&cond_client); 
                     break; 
                 
                 case MSG_ERR:
@@ -194,12 +212,28 @@
                     stampa_matrice(client->paroliere_client); 
                     pthread_cond_signal(&cond_client);
                     break;  
+                
+                case MSG_SERVER_SHUTDONW:
+
+                    printf("%s\n", msg->data); 
+                    printf("Digita un tasto qualsiasi per terminare-->"); 
+                    fflush(stdout);
+                    pthread_mutex_unlock(&mutex_client); 
+
+                    pthread_mutex_lock(&mutex_running); 
+                    exit_signal = 1; 
+                    pthread_mutex_unlock(&mutex_running);
+                    
+                    free(msg->data);
+                    free(msg); 
+
+                    close(socket_fd);
+                    pthread_exit(NULL); 
+                    break; 
 
             }
-
             pthread_mutex_unlock(&mutex_client); 
             free(msg->data); 
             free(msg); 
         }
-        close(socket_fd); 
     }

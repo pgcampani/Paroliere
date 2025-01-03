@@ -26,7 +26,7 @@
             pthread_mutex_lock(&mutex_running); 
             running = 0; 
             pthread_mutex_unlock(&mutex_running); 
-            printf("Chiusura server\n"); 
+            printf("Ricevuto segnale SIGINT\n"); 
         }
     }
 
@@ -44,7 +44,7 @@
 
         //Controllo parametri
         if(argc < 3){
-            perror("Numero parametri errato!\nUsage:./paroliere_srv nome_server porta_server [--matrici data_filename] [--durata durata_in_minuti] [--seed rnd_seed] [--diz dizionario]\n");
+            perror("Numero parametri errato!\nUsage:./paroliere_srv nome_server porta_server [--matrice data_filename] [--durata durata_in_minuti] [--seed rnd_seed] [--diz dizionario]\n");
             exit(EXIT_FAILURE); 
         }
 
@@ -122,9 +122,14 @@
         Server_data server_data; 
         inizializza_server_data(&server_data); 
         server_data.data_filename = data_filename; 
+        server_data.durata_partita = durata_in_minuti; 
         genera_matrice(&server_data); 
 
         stampa_matrice(server_data.paroliere); 
+
+        pthread_t thread_tempo; 
+
+        pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)&server_data);
 
         while(running){
 
@@ -148,7 +153,6 @@
                 free(args); 
                 continue; 
             }
-
             args->client_fd = client_fd; 
             args->server_data = &server_data; 
 
@@ -156,13 +160,16 @@
 
             SYSC(retvalue, pthread_create(&client_tid, NULL, client_handler, args), "Nella pthread_create");
 
+            pthread_detach(client_tid); 
+
         }
-
-        printf("STO PER FARE CLEANUP\n"); 
+        printf("Devo fare la join\n"); 
+        pthread_join(thread_tempo, NULL); 
+        printf("Ho fatto la join\n"); 
+        pthread_mutex_destroy(&mutex_running); 
         cleanup(&server_data); 
-        printf("FATTA CLEANUP\n"); 
-
         close(server_fd); 
+        printf("Chiusura server\n"); 
     }
 
     void *client_handler(void *args){
@@ -173,6 +180,8 @@
         
         int retvalue; 
 
+        inserisci_giocatore(server_data, client_fd); 
+
         Messaggio *msg, *risposta; 
 
         risposta = (Messaggio*)malloc(sizeof(Messaggio)); 
@@ -181,6 +190,7 @@
             close(client_fd);
             pthread_exit(NULL); 
         }
+        risposta->data = NULL; 
 
         while(1){
 
@@ -220,9 +230,8 @@
                 //La lunghezza è maggiore di 0. Alloco memoria per il contenuto del messaggio
                 msg->data = (char*)malloc(sizeof(char) * msg->length + 1);
                 if(msg->data == NULL){
-                    perror("Nella malloc"); 
-                    close(client_fd); 
-                    pthread_exit(NULL); 
+                    perror("Nella malloc");  
+                    break; 
                 }
 
                 SYSC(retvalue, read(client_fd, msg->data, msg->length), "Errore nella read");
@@ -243,7 +252,14 @@
                         risposta->data = "La lunghezza dell'username deve essere compresa tra 1 e 10 caratteri";
                         risposta->length = strlen(risposta->data); 
                         invia_messaggio(client_fd, risposta); 
-                        continue; 
+                        break; 
+                    }
+
+                    if(server_data->partita_in_corso){
+                        printf("Evviva la parita è iniziata\n"); 
+                    }
+                    else{
+                        printf("La partita deve iniziare\n"); 
                     }
 
                     if(cerca_giocatore(server_data, msg->data)){
@@ -251,7 +267,7 @@
                         risposta->data = "Username già occupato"; 
                         risposta->length = strlen(risposta->data);
                         invia_messaggio(client_fd, risposta); 
-                        continue;
+                        break; 
                     }
 
                     pthread_mutex_lock(&server_data->mutex_server_data); 
@@ -262,15 +278,12 @@
                         risposta->length = strlen(risposta->data); 
                         invia_messaggio(client_fd, risposta); 
                         pthread_mutex_unlock(&server_data->mutex_server_data); 
-                        close(client_fd); 
-                        free(msg->data); 
-                        free(msg); 
-                        pthread_exit(NULL);
+                        break;
                     }
 
                     pthread_mutex_unlock(&server_data->mutex_server_data); 
                     
-                    inserisci_giocatore(server_data, client_fd, msg->data);
+                    registra_giocatore(server_data, client_fd, msg->data);
 
                     risposta->type = MSG_OK;
                     risposta->data = "Registrazione avvenuta con successo"; 
@@ -285,10 +298,6 @@
                     risposta->data = paroliere_in_stringa(server_data->paroliere); 
                     risposta->length = strlen(risposta->data); 
                     invia_messaggio(client_fd, risposta); 
-
-                    free(risposta->data); 
-
-                    free(msg->data); 
                     break; 
 
                 default: 
@@ -296,12 +305,58 @@
                     risposta->data = "Comando non riconosciuto"; 
                     risposta->length = strlen(risposta->data); 
                     invia_messaggio(client_fd, risposta); 
-                    free(msg->data); 
                     break; 
             }
+            
+            free(msg->data);
             free(msg); 
+            msg = NULL; 
+
         }
-        close(client_fd); 
+        
+        free(msg->data);
+        free(msg); 
+
+        
+        free(risposta->data);
         free(risposta); 
+
+        close(client_fd); 
         pthread_exit(NULL); 
     }
+
+void *gestione_tempo_partita(void* args){
+    Server_data *server_data = (Server_data*)args; 
+    server_data->durata_partita = server_data->durata_partita * 60; 
+    int timer;
+
+    while(1){
+
+        pthread_mutex_lock(&server_data->mutex_tempo);
+
+        if(server_data->partita_in_corso){
+            server_data->partita_in_corso = 0;
+            timer = 15;  
+        }
+        else{
+            server_data->partita_in_corso = 1; 
+            timer = server_data->durata_partita;
+        }
+        pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+        timer--; 
+
+        sleep(1);
+
+        while(timer){
+            if(running){
+                timer--;
+                sleep(1);
+                printf("passato 1 sec, partita: %d\n", server_data->partita_in_corso);
+            }
+            else{
+                pthread_exit(NULL); 
+            }   
+        }
+    }
+}

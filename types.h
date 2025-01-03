@@ -44,6 +44,9 @@ typedef struct{
     char * data_filename; 
     FILE * matrix_file; 
     pthread_mutex_t mutex_server_data; 
+    pthread_mutex_t mutex_tempo; 
+    int durata_partita; 
+    int partita_in_corso;
 }Server_data; 
 
 typedef struct{
@@ -65,8 +68,12 @@ void inizializza_server_data(Server_data*);
 
 void *client_handler(void*); 
 
+void *gestione_tempo_partita(void*); 
+
 //Thread - client
 void *server_handler(void*); 
+
+//void *commands(void*);
 
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
@@ -88,7 +95,9 @@ Messaggio * leggi_messaggio(int);
 void invia_messaggio(int, Messaggio*); 
 
 //Lista giocatori
-void inserisci_giocatore(Server_data*, int, char*); 
+void inserisci_giocatore(Server_data*, int); 
+
+void registra_giocatore(Server_data*, int, char*);
 
 void stampa_lista_giocatori(Server_data*);
 
