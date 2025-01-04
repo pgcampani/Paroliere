@@ -210,8 +210,17 @@
                 case MSG_MATRICE: 
                     stringa_in_paroliere(msg->data, client);
                     stampa_matrice(client->paroliere_client); 
-                    pthread_cond_signal(&cond_client);
                     break;  
+
+                case MSG_TEMPO_PARTITA:
+                    printf("%s\n", msg->data); 
+                    pthread_cond_signal(&cond_client);
+                    break; 
+                
+                case MSG_TEMPO_ATTESA: 
+                    printf("%s\n", msg->data); 
+                    pthread_cond_signal(&cond_client);
+                    break; 
                 
                 case MSG_SERVER_SHUTDONW:
 

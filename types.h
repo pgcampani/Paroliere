@@ -43,10 +43,12 @@ typedef struct{
     int count_giocatori; 
     char * data_filename; 
     FILE * matrix_file; 
+    pthread_t client_tid; 
     pthread_mutex_t mutex_server_data; 
     pthread_mutex_t mutex_tempo; 
     int durata_partita; 
     int partita_in_corso;
+    int timer;
 }Server_data; 
 
 typedef struct{
@@ -87,7 +89,9 @@ char * paroliere_in_stringa(char [DIM_MATRIX][DIM_MATRIX]);
 void stringa_in_paroliere(char *, Client_t*); 
 
 //Gestione utente
-int cerca_giocatore(Server_data*, char*); 
+int cerca_giocatore(Server_data*, char*);
+
+void cancella_utente(Server_data*, int); 
 
 //MESSAGGI
 Messaggio * leggi_messaggio(int); 

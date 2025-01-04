@@ -1,11 +1,10 @@
 1. unica variabile per stato giocatore ??
 2. Ripetizone parole su lista nel client
-3. Cambiare registrazione utente 
 4. Gestire l' inserimento delle parole
 5. Aggiungere TRIE e DFS e cambiare algoritmo dfs con ricerca anche diagonale 
 6. Disconnessione utente da CTRL-C e cancellazione utente + login 
 7. Controllare chiusura thread client_handler nel server in caso di SIGINT 
-8. DIvidi file funzione per funzioni server e funzioni client
+8. Dividi file funzione per funzioni server e funzioni client
 9. Distruggi mutex nel client e porta mutex da variabile globale alla struct del client
 10. DEALLOCARE SOCKET CLIENT
 11. Manca score

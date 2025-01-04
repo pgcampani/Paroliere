@@ -26,7 +26,7 @@
             pthread_mutex_lock(&mutex_running); 
             running = 0; 
             pthread_mutex_unlock(&mutex_running); 
-            printf("Ricevuto segnale SIGINT\n"); 
+            //printf("Ricevuto segnale SIGINT\n"); 
         }
     }
 
@@ -130,12 +130,19 @@
         pthread_t thread_tempo; 
 
         pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)&server_data);
+        
+        while(1){
 
-        while(running){
+            pthread_mutex_lock(&mutex_running);
+            if(!running){
+                pthread_mutex_unlock(&mutex_running);
+                break;
+            }
+            pthread_mutex_unlock(&mutex_running);
 
             ClientHandlerArgs *args = (ClientHandlerArgs*)malloc(sizeof(ClientHandlerArgs)); 
             if(args == NULL){
-                perror("Nella malloc"); 
+                perror("Nella malloc");
                 exit(EXIT_FAILURE); 
             }
 
@@ -144,8 +151,8 @@
             if(client_fd == -1){
                 pthread_mutex_lock(&mutex_running); 
                 if(running == 0){
-                    free(args);
                     pthread_mutex_unlock(&mutex_running);  
+                    free(args);
                     break; 
                 }
                 pthread_mutex_unlock(&mutex_running); 
@@ -153,23 +160,24 @@
                 free(args); 
                 continue; 
             }
+
             args->client_fd = client_fd; 
             args->server_data = &server_data; 
 
-            pthread_t client_tid; 
 
-            SYSC(retvalue, pthread_create(&client_tid, NULL, client_handler, args), "Nella pthread_create");
-
-            pthread_detach(client_tid); 
+            SYSC(retvalue, pthread_create(&server_data.client_tid, NULL, client_handler, args), "Nella pthread_create");
 
         }
-        printf("Devo fare la join\n"); 
-        pthread_join(thread_tempo, NULL); 
-        printf("Ho fatto la join\n"); 
+        pthread_cancel(server_data.client_tid);
+        pthread_join(thread_tempo, NULL);
+        cleanup(&server_data);
+        pthread_mutex_lock(&mutex_running);
+        pthread_mutex_unlock(&mutex_running); 
         pthread_mutex_destroy(&mutex_running); 
-        cleanup(&server_data); 
         close(server_fd); 
-        printf("Chiusura server\n"); 
+
+               
+        //printf("Chiusura server\n"); 
     }
 
     void *client_handler(void *args){
@@ -197,7 +205,8 @@
             pthread_mutex_lock(&mutex_running);
             if(!running){
                 pthread_mutex_unlock(&mutex_running); 
-                break;
+                printf("Chiusura thread\n"); 
+                pthread_exit(NULL);
             }
             pthread_mutex_unlock(&mutex_running); 
 
@@ -217,12 +226,25 @@
             //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
             if(retvalue == 0){
                 printf("Il client ha chiuso al connessione\n"); 
+                cancella_utente(server_data, client_fd); 
+                printf("Utente cancellato\n");
+                pthread_exit(NULL);  
                 break; 
+            }
+            else if(retvalue == -1){
+                //pthread_mutex_lock(&mutex_running);
+                if(errno == EINTR){
+                    //pthread_mutex_unlock(&mutex_running);
+                    printf("chiusura thread\n");
+                    pthread_exit(NULL); 
+                }
+                //pthread_mutex_unlock(&mutex_running); 
             }
             
             SYSC(retvalue, read(client_fd, &msg->type, sizeof(char)), "Nella read"); 
             if(retvalue == 0){
                 printf("Il client ha chiuso la connessione\n");
+                cancella_utente(server_data, client_fd); 
                 break; 
             }
             
@@ -237,6 +259,7 @@
                 SYSC(retvalue, read(client_fd, msg->data, msg->length), "Errore nella read");
                 if(retvalue == 0){
                     printf("Il client ha chiuso la connessione\n");
+                    cancella_utente(server_data, client_fd);
                     break; 
                 }
 
@@ -253,13 +276,6 @@
                         risposta->length = strlen(risposta->data); 
                         invia_messaggio(client_fd, risposta); 
                         break; 
-                    }
-
-                    if(server_data->partita_in_corso){
-                        printf("Evviva la parita è iniziata\n"); 
-                    }
-                    else{
-                        printf("La partita deve iniziare\n"); 
                     }
 
                     if(cerca_giocatore(server_data, msg->data)){
@@ -295,9 +311,29 @@
                     printf("%d\n", server_data->count_giocatori);
 
                     risposta->type = MSG_MATRICE; 
+                    pthread_mutex_lock(&server_data->mutex_server_data);
                     risposta->data = paroliere_in_stringa(server_data->paroliere); 
+                    pthread_mutex_unlock(&server_data->mutex_server_data); 
                     risposta->length = strlen(risposta->data); 
                     invia_messaggio(client_fd, risposta); 
+                    free(risposta->data); 
+
+                    char stringa_tempo[MAX_BUFFER]; 
+                    pthread_mutex_lock(&server_data->mutex_tempo); 
+                    if(server_data->partita_in_corso){
+                        risposta->type = MSG_TEMPO_PARTITA;
+                        snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo fine partita %d\n", server_data->timer);
+                    }
+                    else{
+                        risposta->type = MSG_TEMPO_ATTESA; 
+                        snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo a inizio partita %d\n", server_data->timer);  
+                    }
+                    risposta->data = stringa_tempo; 
+                    risposta->length = strlen(stringa_tempo); 
+                    pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                    invia_messaggio(client_fd, risposta);
+
                     break; 
 
                 default: 
@@ -318,7 +354,7 @@
         free(msg); 
 
         
-        free(risposta->data);
+        //free(risposta->data);
         free(risposta); 
 
         close(client_fd); 
@@ -327,8 +363,8 @@
 
 void *gestione_tempo_partita(void* args){
     Server_data *server_data = (Server_data*)args; 
-    server_data->durata_partita = server_data->durata_partita * 60; 
-    int timer;
+    server_data->durata_partita = 20;
+    int timer;  
 
     while(1){
 
@@ -336,27 +372,34 @@ void *gestione_tempo_partita(void* args){
 
         if(server_data->partita_in_corso){
             server_data->partita_in_corso = 0;
-            timer = 15;  
+            server_data->timer = 15;  
+            timer = 15; 
         }
         else{
             server_data->partita_in_corso = 1; 
-            timer = server_data->durata_partita;
+            server_data->timer = server_data->durata_partita;
+            timer = server_data->timer; 
+            genera_matrice(server_data); 
         }
+
         pthread_mutex_unlock(&server_data->mutex_tempo); 
 
-        timer--; 
-
-        sleep(1);
-
         while(timer){
+
+            pthread_mutex_lock(&mutex_running);
+
             if(running){
+                pthread_mutex_unlock(&mutex_running); 
+                pthread_mutex_lock(&server_data->mutex_tempo); 
+                server_data->timer--;
+                pthread_mutex_unlock(&server_data->mutex_tempo); 
                 timer--;
                 sleep(1);
-                printf("passato 1 sec, partita: %d\n", server_data->partita_in_corso);
             }
             else{
+                pthread_mutex_unlock(&mutex_running); 
                 pthread_exit(NULL); 
-            }   
+            }
         }
     }
 }

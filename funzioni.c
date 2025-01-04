@@ -140,16 +140,21 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 
 void inizializza_server_data(Server_data *server_data){
+    pthread_mutex_init(&server_data->mutex_server_data, NULL); 
+    pthread_mutex_init(&server_data->mutex_tempo, NULL); 
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
     //Lista giocatori
     server_data->lista_giocatori = NULL; 
     server_data->count_giocatori = 0; 
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
-    pthread_mutex_init(&server_data->mutex_server_data, NULL); 
-    pthread_mutex_init(&server_data->mutex_tempo, NULL); 
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
 void inserisci_giocatore(Server_data* server_data, int socket){
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
 
     Giocatore *nuovo_giocatore = (Giocatore*)malloc(sizeof(Giocatore));
     if(nuovo_giocatore == NULL){
@@ -163,8 +168,6 @@ void inserisci_giocatore(Server_data* server_data, int socket){
     nuovo_giocatore->in_gioco = 0; 
     nuovo_giocatore->score = 0; 
     nuovo_giocatore->tid = pthread_self(); 
-
-    pthread_mutex_lock(&server_data->mutex_server_data); 
 
     nuovo_giocatore->next = server_data->lista_giocatori; 
 
@@ -196,7 +199,7 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
-void cancella_giocatore(Server_data* server_data, int socket){
+void cancella_utente(Server_data* server_data, int socket){
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
@@ -212,7 +215,7 @@ void cancella_giocatore(Server_data* server_data, int socket){
         printf("Giocatore non trovato\n"); 
         return; 
     }
-
+    
     if(prev == NULL){
         //Rimuovo il primo nodo
         server_data->lista_giocatori = temp->next; 
@@ -222,7 +225,7 @@ void cancella_giocatore(Server_data* server_data, int socket){
     }
 
     server_data->count_giocatori--; 
-    
+
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 
     free(temp); 
@@ -298,10 +301,13 @@ void stringa_in_paroliere(char * str, Client_t * client){
 //FUNZIONE DI CLEANUP
 void cleanup(Server_data *server_data){
 
+    pthread_mutex_lock(&server_data->mutex_server_data);
+
     if(server_data->matrix_file){
         fclose(server_data->matrix_file); 
         server_data->matrix_file = NULL; 
     }
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 
     //invia_shtudown
     Messaggio msg; 
@@ -309,11 +315,16 @@ void cleanup(Server_data *server_data){
     msg.data = "Chiusura server"; 
     msg.length = strlen(msg.data); 
 
-    Giocatore *curr = server_data->lista_giocatori; 
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
+    Giocatore *curr = server_data->lista_giocatori; 
+
     while(curr != NULL){
-        invia_messaggio(curr->socket, &msg); 
+        invia_messaggio(curr->socket, &msg);
+
+        pthread_cancel(curr->tid); 
+        pthread_join(curr->tid, NULL); 
+         
         close(curr->socket); 
 
         Giocatore *rimuovi = curr; 
