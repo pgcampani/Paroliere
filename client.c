@@ -59,6 +59,7 @@
 
         client->registrato = 0; 
         client->socket_fd = socket_fd; 
+        client->lista_parole = NULL; 
  
         pthread_t risposta_handler;
 
@@ -151,8 +152,6 @@
                         printf("Comando non valido. Forse cercavi: fine\n"); 
                     }
                     else{
-                        pthread_mutex_unlock(&mutex_client); 
-                        close(client->socket_fd); 
                         break; 
                     }
                 }
@@ -170,8 +169,57 @@
                         printf("Utente già registrato.\n"); 
                     }
                 }
+
+                else if(strcmp(comando, "aiuto") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: aiuto\n"); 
+                    }
+                    else{
+                        printf("COMANDI:\n");
+                        printf("- registra_utente nome_utente\n");
+                        printf("- matrice - per richiedere la matrice del gioco in corso\n");
+                        printf("- parola p - per inviare una parola nel paroliere\n");
+                        printf("- fine - per uscire dal gioco\n"); 
+                    }
+                }
+                
+                else if(strcmp(comando, "parola") == 0){
+                    if(argomento == NULL){
+                        printf("Nessuna parola inserita\n");
+                    }
+                    else{
+                        pthread_mutex_lock(&mutex_client);
+                        msg->type = MSG_PAROLA;
+                        msg->data = argomento; 
+                        msg->length = strlen(msg->data); 
+
+                        int parola_inviata; 
+                        parola_inviata = inserisci_parola_in_lista(client, msg->data);
+
+                        if(parola_inviata){
+                            invia_messaggio(socket_fd, msg);
+                            pthread_cond_wait(&cond_client, &mutex_client); 
+                            pthread_mutex_unlock(&mutex_client);
+                        }
+                        else{
+                            printf("Parola già inviata\n");
+                            pthread_mutex_unlock(&mutex_client); 
+                        }
+                    }
+                }
+
+                else if(strcmp(comando, "fine") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: fine\n");
+                    }
+                    else{
+                        break; 
+                    }
+                }
             }
         }
+
+        pthread_cancel(risposta_handler); 
         pthread_join(risposta_handler, NULL);
         close(client->socket_fd); 
         free(client); 
@@ -220,6 +268,11 @@
                 case MSG_TEMPO_ATTESA: 
                     printf("%s\n", msg->data); 
                     pthread_cond_signal(&cond_client);
+                    break; 
+
+                case MSG_PUNTI_PAROLA: 
+                    printf("Punti parola: %s\n", msg->data); 
+                    pthread_cond_signal(&cond_client); 
                     break; 
                 
                 case MSG_SERVER_SHUTDONW:

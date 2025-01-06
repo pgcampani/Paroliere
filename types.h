@@ -36,6 +36,11 @@ typedef struct nodoG{
     pthread_t tid; 
     struct nodoG * next; 
 }Giocatore; 
+
+typedef struct Parola{
+    char * parola;
+    struct Parola * next; 
+}Parola; 
  
 typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
@@ -43,8 +48,7 @@ typedef struct{
     int count_giocatori; 
     char * data_filename; 
     FILE * matrix_file; 
-    pthread_t client_tid; 
-    pthread_mutex_t mutex_server_data; 
+    pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
     int durata_partita; 
     int partita_in_corso;
@@ -60,6 +64,7 @@ typedef struct{
     int registrato; 
     int socket_fd; 
     char paroliere_client[DIM_MATRIX][DIM_MATRIX]; 
+    Parola *lista_parole; 
 }Client_t; 
 
 
@@ -74,6 +79,12 @@ void *gestione_tempo_partita(void*);
 
 //Thread - client
 void *server_handler(void*); 
+
+int inserisci_parola_in_lista(Client_t*, char*);
+
+int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRIX][DIM_MATRIX]);
+
+int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
 //void *commands(void*);
 

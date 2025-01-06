@@ -31,6 +31,8 @@ void matrice_casuale(Server_data * server_data){
 
 void genera_matrice(Server_data * server_data){
 
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
     if(server_data->matrix_file == NULL && server_data->data_filename != NULL){
         //Apri il file solo se il file non è già aperto
         server_data->matrix_file = fopen(server_data->data_filename, "r");
@@ -69,6 +71,8 @@ void genera_matrice(Server_data * server_data){
     else{
         matrice_casuale(server_data); 
     }
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
 void stampa_matrice(char paroliere[DIM_MATRIX][DIM_MATRIX]){
@@ -226,9 +230,11 @@ void cancella_utente(Server_data* server_data, int socket){
 
     server_data->count_giocatori--; 
 
-    pthread_mutex_unlock(&server_data->mutex_server_data); 
+    close(temp->socket);
 
     free(temp); 
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
 int cerca_giocatore(Server_data* server_data, char* username){
@@ -298,6 +304,81 @@ void stringa_in_paroliere(char * str, Client_t * client){
     }
 }
 
+
+int dfs_rec(char p[DIM_MATRIX][DIM_MATRIX], int righe, int colonne, char *parola, int index, int visited[DIM_MATRIX][DIM_MATRIX]){
+
+    // Limiti paroliere
+    if (righe < 0 || colonne < 0 || righe >= DIM_MATRIX || colonne >= DIM_MATRIX) {
+        return 0;
+    }
+
+    //Cella già visitata o lettera non corrisponde
+    if(visited[righe][colonne] || p[righe][colonne] != parola[index]){
+        return 0; 
+    }
+
+    printf("Trovata lettera %c nella posizione (%d, %d), index = %d\n", p[righe][colonne], righe, colonne, index); 
+    // Caso base - fine parola
+    if (index == strlen(parola) - 1) {
+        printf("Parola trovata\n"); 
+        return 1;
+    }
+
+    visited[righe][colonne] = 1;
+
+    // Esplora in tutte le direzioni ortogonali
+
+    if(dfs_rec(p, righe - 1, colonne, parola, index + 1, visited)){
+        printf("Esplorato: (%d, %d) Alto\n", righe - 1, colonne);
+        return 1; // Alto
+    }
+    if(dfs_rec(p, righe + 1, colonne, parola, index + 1, visited)){
+        printf("Esplorato: (%d, %d) Basso\n", righe + 1, colonne);
+        return 1; // Basso
+    }
+    if(dfs_rec(p, righe, colonne - 1, parola, index + 1, visited)){
+        printf("Esplorato: (%d, %d) Sinistra\n", righe, colonne - 1);
+        return 1; ; // Sinistra
+    }
+    if (dfs_rec(p, righe, colonne + 1, parola, index + 1, visited)){
+        printf("Esplorato: (%d, %d) Destra\n", righe, colonne + 1);
+        return 1; //Destra
+    } 
+    if(dfs_rec(p, righe - 1, colonne - 1, parola, index + 1, visited)){
+        return 1; //Diagonale sinistra alto
+    } 
+    if(dfs_rec(p, righe - 1, colonne + 1, parola, index + 1, visited)){
+        return 1; //Diagonale destra alto
+    }
+    if(dfs_rec(p, righe + 1, colonne - 1, parola, index + 1, visited)){
+        return 1; //Diagonale sinistra basso
+    }
+    if(dfs_rec(p, righe + 1, colonne + 1, parola, index + 1, visited)){
+        return 1; //Diagonale destra basso; 
+    }
+
+    visited[righe][colonne] = 0; // Deselezione della cella
+
+    return 0;
+}
+
+int parola_presente(char matrice[DIM_MATRIX][DIM_MATRIX], char *parola){
+    int visited[DIM_MATRIX][DIM_MATRIX] = {0}; 
+
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+            printf("Verifichiamo (%d, %d): %c\n",i, j, matrice[i][j]); 
+            if(dfs_rec(matrice, i, j, parola, 0, visited)){
+                return 1; 
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+
 //FUNZIONE DI CLEANUP
 void cleanup(Server_data *server_data){
 
@@ -307,7 +388,6 @@ void cleanup(Server_data *server_data){
         fclose(server_data->matrix_file); 
         server_data->matrix_file = NULL; 
     }
-    pthread_mutex_unlock(&server_data->mutex_server_data); 
 
     //invia_shtudown
     Messaggio msg; 
@@ -315,17 +395,22 @@ void cleanup(Server_data *server_data){
     msg.data = "Chiusura server"; 
     msg.length = strlen(msg.data); 
 
-    pthread_mutex_lock(&server_data->mutex_server_data); 
-
     Giocatore *curr = server_data->lista_giocatori; 
 
     while(curr != NULL){
         invia_messaggio(curr->socket, &msg);
 
-        pthread_cancel(curr->tid); 
-        pthread_join(curr->tid, NULL); 
+        if(pthread_cancel(curr->tid) != 0){
+            perror("Errore nella pthread_cancel"); 
+        }
+
+        if(pthread_join(curr->tid, NULL) != 0){
+            perror("Errore durante pthread_join"); 
+        }
          
-        close(curr->socket); 
+        if(close(curr->socket) == -1){
+            perror("Errore in chiusura socket"); 
+        } 
 
         Giocatore *rimuovi = curr; 
         curr = curr->next; 
@@ -335,4 +420,38 @@ void cleanup(Server_data *server_data){
 
     pthread_mutex_destroy(&server_data->mutex_server_data); 
     pthread_mutex_destroy(&server_data->mutex_tempo); 
+}
+
+
+//FUNZIONE CLIENT PER INSERIRE PAROLE INVIATE IN LISTA
+int inserisci_parola_in_lista(Client_t* client, char* word){
+
+    Parola * temp = client->lista_parole; 
+
+    while(temp != NULL){
+        if(strcmp(word, temp->parola) == 0){
+            return 0; 
+        }
+        temp = temp->next;
+    }
+
+    Parola * nuova_parola = (Parola*)malloc(sizeof(Parola)); 
+    if(nuova_parola == NULL){
+        perror("Nella malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    nuova_parola->parola = (char*)malloc(strlen(word) + 1);
+    if(nuova_parola->parola == NULL){
+        perror("Nella malloc");
+        exit(EXIT_FAILURE); 
+    }
+
+    strcpy(nuova_parola->parola, word); 
+    
+    nuova_parola->next = client->lista_parole; 
+
+    client->lista_parole = nuova_parola; 
+
+    return 1; 
 }

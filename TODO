@@ -1,6 +1,6 @@
 1. unica variabile per stato giocatore ??
-2. Ripetizone parole su lista nel client
-4. Gestire l' inserimento delle parole
+2. Ripetizone parole su lista nel client -> ricordarsi di eliminare la lista ad ogni partita -> la lista viene eliminata dal client quando il server invia la classifica
+4. Gestire l' inserimento delle parole 
 5. Aggiungere TRIE e DFS e cambiare algoritmo dfs con ricerca anche diagonale 
 6. Disconnessione utente da CTRL-C e cancellazione utente + login 
 7. Controllare chiusura thread client_handler nel server in caso di SIGINT 
