@@ -377,7 +377,20 @@ int parola_presente(char matrice[DIM_MATRIX][DIM_MATRIX], char *parola){
     return 0;
 }
 
+void aggiorna_punti_giocatore(Server_data* server_data, int socket, char* parola){
 
+    Giocatore *temp = server_data->lista_giocatori;
+
+    while(temp != NULL){
+        if(temp->socket == socket){
+            temp->score += strlen(parola); 
+            pthread_mutex_unlock(&server_data->mutex_server_data);
+            return;  
+        }
+        temp = temp->next; 
+    }
+
+}
 
 //FUNZIONE DI CLEANUP
 void cleanup(Server_data *server_data){
@@ -407,7 +420,7 @@ void cleanup(Server_data *server_data){
         if(pthread_join(curr->tid, NULL) != 0){
             perror("Errore durante pthread_join"); 
         }
-         
+
         if(close(curr->socket) == -1){
             perror("Errore in chiusura socket"); 
         } 
@@ -454,4 +467,15 @@ int inserisci_parola_in_lista(Client_t* client, char* word){
     client->lista_parole = nuova_parola; 
 
     return 1; 
+}
+
+void rimuovi_parole(Client_t *client){
+    Parola *curr = client->lista_parole; 
+
+    while(curr != NULL){
+        curr->parola = NULL; 
+        curr = curr->next; 
+    }
+
+    client->lista_parole = NULL; 
 }

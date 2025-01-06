@@ -252,6 +252,9 @@
                 
                 case MSG_ERR:
                     printf("%s\n", msg->data); 
+                    if(strcmp(msg->data, "Parita non ancora iniziata. Attendi.") == 0){
+                        rimuovi_parole(client); 
+                    }
                     pthread_cond_signal(&cond_client); 
                     break;
 

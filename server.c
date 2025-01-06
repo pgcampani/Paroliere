@@ -123,10 +123,6 @@
         server_data.data_filename = data_filename; 
         server_data.durata_partita = durata_in_minuti; 
 
-        //pthread_mutex_lock(&server_data.mutex_server_data);
-        //stampa_matrice(server_data.paroliere); 
-        //pthread_mutex_unlock(&server_data.mutex_server_data); 
-
         pthread_t thread_tempo; 
 
         pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)&server_data);
@@ -175,10 +171,7 @@
         pthread_mutex_lock(&mutex_running);
         pthread_mutex_unlock(&mutex_running); 
         pthread_mutex_destroy(&mutex_running); 
-        close(server_fd); 
-
-               
-        //printf("Chiusura server\n"); 
+        close(server_fd);                
     }
 
     void *client_handler(void *args){
@@ -236,7 +229,6 @@
                 }
                 pthread_mutex_unlock(&mutex_running); 
             }
-            
             SYSC(retvalue, read(client_fd, &msg->type, sizeof(char)), "Nella read"); 
             if(retvalue == 0){
                 cancella_utente(server_data, client_fd); 
@@ -345,29 +337,44 @@
                 
                 case MSG_PAROLA: 
 
-                    int parola_corretta; 
                     pthread_mutex_lock(&server_data->mutex_server_data);
-                    parola_corretta = parola_presente(server_data->paroliere, msg->data);
 
-                    //Verificare che la parola sia nel dizionario --> Caricare TRIE
+                    if(server_data->partita_in_corso){
+                        int parola_corretta; 
+                        parola_corretta = parola_presente(server_data->paroliere, msg->data);
 
-                    //Calcola punteggio della parola --> strlen semplice
-                    printf("%d\n", parola_corretta); 
-                    if(parola_corretta){
-                        risposta->type = MSG_PUNTI_PAROLA;
-                        risposta->data = "Parola corretta";
-                        risposta->length = strlen(risposta->data);
-                        
-                        invia_messaggio(client_fd, risposta); 
+                        //Verificare che la parola sia nel dizionario --> Caricare TRIE
+
+                        //Calcola punteggio della parola --> strlen semplice
+                        if(parola_corretta){
+                            
+                            aggiorna_punti_giocatore(server_data, client_fd, msg->data); 
+                            char punteggio[MAX_BUFFER];
+
+                            risposta->type = MSG_PUNTI_PAROLA;
+                            snprintf(punteggio, sizeof(punteggio), "Punteggio parola: %ld\n", strlen(msg->data)); 
+                            risposta->data = punteggio;
+                            risposta->length = strlen(risposta->data); 
+                            invia_messaggio(client_fd, risposta); 
+                        }
+                        else{
+                            risposta->type = MSG_ERR;
+                            risposta->data = "Parola non corretta";
+                            risposta->length = strlen(risposta->data);
+
+                            invia_messaggio(client_fd, risposta);
+                        }
+                        pthread_mutex_unlock(&server_data->mutex_server_data); 
                     }
                     else{
-                        risposta->type = MSG_ERR;
-                        risposta->data = "Parola non corretta";
-                        risposta->length = strlen(risposta->data);
+                        risposta->type = MSG_ERR; 
+                        risposta->data = "Parita non ancora iniziata. Attendi."; 
+                        risposta->length = strlen(risposta->data); 
 
-                        invia_messaggio(client_fd, risposta);
+                        invia_messaggio(client_fd, risposta); 
+
+                        pthread_mutex_unlock(&server_data->mutex_server_data); 
                     }
-                    pthread_mutex_unlock(&server_data->mutex_server_data); 
                     //Invia punteggio al client se tutto corretto altrimenti MSG_ERR
                     break; 
 
@@ -398,7 +405,6 @@
 
 void *gestione_tempo_partita(void* args){
     Server_data *server_data = (Server_data*)args; 
-    server_data->durata_partita = 60;
     int timer;  
 
     while(1){
@@ -407,14 +413,14 @@ void *gestione_tempo_partita(void* args){
 
         if(server_data->partita_in_corso){
             server_data->partita_in_corso = 0;
-            server_data->timer = 30;  
-            timer = 15; 
+            server_data->timer = 60;  
+            timer = server_data->timer; 
             genera_matrice(server_data); 
             stampa_matrice(server_data->paroliere); 
         }
         else{
             server_data->partita_in_corso = 1; 
-            server_data->timer = server_data->durata_partita;
+            server_data->timer = server_data->durata_partita * 60;
             timer = server_data->timer; 
         }
 

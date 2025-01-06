@@ -86,6 +86,8 @@ int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRI
 
 int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
+void rimuovi_parole(Client_t*);
+
 //void *commands(void*);
 
 //PAROLIERE 
@@ -113,6 +115,8 @@ void invia_messaggio(int, Messaggio*);
 void inserisci_giocatore(Server_data*, int); 
 
 void registra_giocatore(Server_data*, int, char*);
+
+void aggiorna_punti_giocatore(Server_data*, int, char*); 
 
 void stampa_lista_giocatori(Server_data*);
 
