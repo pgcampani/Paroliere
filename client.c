@@ -25,8 +25,31 @@
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
     pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
 
+    void sigint_handler(int signum){
+        if(signum == SIGINT){
+            pthread_mutex_lock(&mutex_running); 
+            exit_signal = 1; 
+            pthread_mutex_unlock(&mutex_running); 
+
+            pthread_mutex_lock(&mutex_client);
+
+            pthread_cond_broadcast(&cond_client);
+
+            pthread_mutex_unlock(&mutex_client); 
+        }
+    }
+
+
     int main(int argc, char *argv[]){
-        //Riceve da linea di comando il nome del server e la porta a cui collegarsi
+
+        struct sigaction sa; 
+        sa.sa_handler = sigint_handler; 
+        sigemptyset(&sa.sa_mask); 
+        sa.sa_flags = 0; 
+        if(sigaction(SIGINT, &sa, NULL) == -1){
+            perror("Errore nella configurazione di sigaction");
+            exit(EXIT_FAILURE); 
+        }
 
         if(argc < 2){
             perror("Numero parametri errato!\nUsage:./paroliere_srv nome_server porta_server");
@@ -83,6 +106,14 @@
 
         while(1){
 
+            pthread_mutex_lock(&mutex_running);
+            if(exit_signal){
+                printf("Esco\n"); 
+                pthread_mutex_unlock(&mutex_running); 
+                break; 
+            }
+            pthread_mutex_unlock(&mutex_running); 
+
             pthread_mutex_lock(&mutex_client);
             printf("[PROMPT PAROLIERE]-->");
             fflush(stdout);
@@ -95,6 +126,7 @@
             
             pthread_mutex_lock(&mutex_running);
             if(exit_signal){
+                printf("Esco\n"); 
                 pthread_mutex_unlock(&mutex_running); 
                 break; 
             }
@@ -237,6 +269,13 @@
 
         while(1){
 
+            pthread_mutex_lock(&mutex_running);
+            if(exit_signal){
+                pthread_mutex_unlock(&mutex_running); 
+                break; 
+            }
+            pthread_mutex_unlock(&mutex_running); 
+
             Messaggio *msg; 
 
             msg = leggi_messaggio(socket_fd); 
@@ -300,5 +339,6 @@
             pthread_mutex_unlock(&mutex_client); 
             free(msg->data); 
             free(msg); 
-        }
+        } 
+        pthread_exit(NULL); 
     }

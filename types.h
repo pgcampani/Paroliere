@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <pthread.h>
 
 
@@ -19,6 +20,8 @@
 #define MAX_CLIENT 32
 #define USERNAME_LENGTH 11
 
+#include "trie.h"
+
 typedef struct{
     char type; 
     unsigned int length; 
@@ -37,11 +40,6 @@ typedef struct nodoG{
     struct nodoG * next; 
 }Giocatore; 
 
-typedef struct Parola{
-    char * parola;
-    struct Parola * next; 
-}Parola; 
- 
 typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
     Giocatore *lista_giocatori; 
@@ -50,6 +48,7 @@ typedef struct{
     FILE * matrix_file; 
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
+    TrieNode * root_trie; 
     int durata_partita; 
     int partita_in_corso;
     int timer;
@@ -58,7 +57,12 @@ typedef struct{
 typedef struct{
     int client_fd; 
     Server_data *server_data; 
-}ClientHandlerArgs; 
+}ClientHandlerArgs;
+
+typedef struct Parola{
+    char * parola;
+    struct Parola * next; 
+}Parola; 
 
 typedef struct{
     int registrato; 
@@ -67,6 +71,21 @@ typedef struct{
     Parola *lista_parole; 
 }Client_t; 
 
+
+//Thread - client
+void *server_handler(void*); 
+
+int inserisci_parola_in_lista(Client_t*, char*);
+
+void stampa_matrice(char [DIM_MATRIX][DIM_MATRIX]);
+
+void rimuovi_parole(Client_t*);
+
+void stringa_in_paroliere(char *, Client_t*); 
+
+Messaggio * leggi_messaggio(int); 
+
+void invia_messaggio(int, Messaggio*); 
 
 //Prototipi funzioni
 
@@ -77,19 +96,6 @@ void *client_handler(void*);
 
 void *gestione_tempo_partita(void*); 
 
-//Thread - client
-void *server_handler(void*); 
-
-int inserisci_parola_in_lista(Client_t*, char*);
-
-int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRIX][DIM_MATRIX]);
-
-int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
-
-void rimuovi_parole(Client_t*);
-
-//void *commands(void*);
-
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
 
@@ -99,7 +105,9 @@ void stampa_matrice(char [DIM_MATRIX][DIM_MATRIX]);
 
 char * paroliere_in_stringa(char [DIM_MATRIX][DIM_MATRIX]); 
 
-void stringa_in_paroliere(char *, Client_t*); 
+int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRIX][DIM_MATRIX]);
+
+int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
 //Gestione utente
 int cerca_giocatore(Server_data*, char*);
@@ -121,6 +129,5 @@ void aggiorna_punti_giocatore(Server_data*, int, char*);
 void stampa_lista_giocatori(Server_data*);
 
 void elimina_lista(Server_data*); 
-
 
 void cleanup(Server_data*);

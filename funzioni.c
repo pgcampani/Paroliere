@@ -148,11 +148,11 @@ void inizializza_server_data(Server_data *server_data){
     pthread_mutex_init(&server_data->mutex_tempo, NULL); 
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
-    //Lista giocatori
     server_data->lista_giocatori = NULL; 
     server_data->count_giocatori = 0; 
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
+    server_data->root_trie = crea_nodo(); 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
@@ -293,17 +293,6 @@ char * paroliere_in_stringa(char m[DIM_MATRIX][DIM_MATRIX]){
     return str; 
 }
 
-void stringa_in_paroliere(char * str, Client_t * client){
-    int k = 0; 
-
-    for(int i = 0; i < DIM_MATRIX; i++){
-        for(int j = 0; j < DIM_MATRIX; j++){
-           client->paroliere_client[i][j] = str[k]; 
-           k++; 
-        }
-    }
-}
-
 
 int dfs_rec(char p[DIM_MATRIX][DIM_MATRIX], int righe, int colonne, char *parola, int index, int visited[DIM_MATRIX][DIM_MATRIX]){
 
@@ -316,11 +305,12 @@ int dfs_rec(char p[DIM_MATRIX][DIM_MATRIX], int righe, int colonne, char *parola
     if(visited[righe][colonne] || p[righe][colonne] != parola[index]){
         return 0; 
     }
-
-    printf("Trovata lettera %c nella posizione (%d, %d), index = %d\n", p[righe][colonne], righe, colonne, index); 
+    
+    if(p[righe][colonne] == 'Q'){
+        index++;
+    }
     // Caso base - fine parola
     if (index == strlen(parola) - 1) {
-        printf("Parola trovata\n"); 
         return 1;
     }
 
@@ -329,19 +319,15 @@ int dfs_rec(char p[DIM_MATRIX][DIM_MATRIX], int righe, int colonne, char *parola
     // Esplora in tutte le direzioni ortogonali
 
     if(dfs_rec(p, righe - 1, colonne, parola, index + 1, visited)){
-        printf("Esplorato: (%d, %d) Alto\n", righe - 1, colonne);
         return 1; // Alto
     }
     if(dfs_rec(p, righe + 1, colonne, parola, index + 1, visited)){
-        printf("Esplorato: (%d, %d) Basso\n", righe + 1, colonne);
         return 1; // Basso
     }
     if(dfs_rec(p, righe, colonne - 1, parola, index + 1, visited)){
-        printf("Esplorato: (%d, %d) Sinistra\n", righe, colonne - 1);
         return 1; ; // Sinistra
     }
     if (dfs_rec(p, righe, colonne + 1, parola, index + 1, visited)){
-        printf("Esplorato: (%d, %d) Destra\n", righe, colonne + 1);
         return 1; //Destra
     } 
     if(dfs_rec(p, righe - 1, colonne - 1, parola, index + 1, visited)){
@@ -367,7 +353,6 @@ int parola_presente(char matrice[DIM_MATRIX][DIM_MATRIX], char *parola){
 
     for(int i = 0; i < DIM_MATRIX; i++){
         for(int j = 0; j < DIM_MATRIX; j++){
-            printf("Verifichiamo (%d, %d): %c\n",i, j, matrice[i][j]); 
             if(dfs_rec(matrice, i, j, parola, 0, visited)){
                 return 1; 
             }
@@ -384,12 +369,28 @@ void aggiorna_punti_giocatore(Server_data* server_data, int socket, char* parola
     while(temp != NULL){
         if(temp->socket == socket){
             temp->score += strlen(parola); 
-            pthread_mutex_unlock(&server_data->mutex_server_data);
+
+            for(int i = 0; i < strlen(parola); i++){
+                if(parola[i] == 'Q'){
+                    temp->score--; 
+                    i++; 
+                }
+            }
             return;  
         }
         temp = temp->next; 
     }
 
+    return; 
+}
+
+void to_uppercase(char *str){
+    while(*str){
+        if(*str >= 'a' && *str <= 'z'){
+            *str = *str - 'a' + 'A';
+        }
+        str++;
+    }
 }
 
 //FUNZIONE DI CLEANUP
@@ -429,14 +430,26 @@ void cleanup(Server_data *server_data){
         curr = curr->next; 
         free(rimuovi); 
     }
+
+    free_trie(server_data->root_trie); 
+
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 
     pthread_mutex_destroy(&server_data->mutex_server_data); 
     pthread_mutex_destroy(&server_data->mutex_tempo); 
 }
 
+void stringa_in_paroliere(char * str, Client_t * client){
+    int k = 0; 
 
-//FUNZIONE CLIENT PER INSERIRE PAROLE INVIATE IN LISTA
+    for(int i = 0; i < DIM_MATRIX; i++){
+        for(int j = 0; j < DIM_MATRIX; j++){
+           client->paroliere_client[i][j] = str[k]; 
+           k++; 
+        }
+    }
+}
+
 int inserisci_parola_in_lista(Client_t* client, char* word){
 
     Parola * temp = client->lista_parole; 

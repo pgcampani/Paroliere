@@ -121,7 +121,8 @@
         Server_data server_data; 
         inizializza_server_data(&server_data); 
         server_data.data_filename = data_filename; 
-        server_data.durata_partita = durata_in_minuti; 
+        server_data.durata_partita = durata_in_minuti;
+        server_data.root_trie = load_file(server_data.root_trie, "dizionario_ita.txt");
 
         pthread_t thread_tempo; 
 
@@ -339,20 +340,35 @@
 
                     pthread_mutex_lock(&server_data->mutex_server_data);
 
+                    to_uppercase(msg->data);
+
+                    pthread_mutex_lock(&server_data->mutex_tempo);
+
                     if(server_data->partita_in_corso){
+                        pthread_mutex_unlock(&server_data->mutex_tempo);
+
                         int parola_corretta; 
+
+                        printf("parola inviata: %s\n", msg->data); 
                         parola_corretta = parola_presente(server_data->paroliere, msg->data);
 
-                        //Verificare che la parola sia nel dizionario --> Caricare TRIE
-
-                        //Calcola punteggio della parola --> strlen semplice
-                        if(parola_corretta){
+                        if(parola_corretta && search_word(server_data->root_trie, msg->data)){
                             
                             aggiorna_punti_giocatore(server_data, client_fd, msg->data); 
                             char punteggio[MAX_BUFFER];
-
+                            int messaggio_punti = strlen(msg->data);
+        
                             risposta->type = MSG_PUNTI_PAROLA;
-                            snprintf(punteggio, sizeof(punteggio), "Punteggio parola: %ld\n", strlen(msg->data)); 
+                            
+                            //Controllo la presenza di Q, in tal caso diminuisco di 1 il valore del punteggio da stampare -- Q esiste solo con Qu ma vale 1 
+                            for(int i = 0; i < strlen(msg->data); i++){
+                                if(msg->data[i] == 'Q'){
+                                    messaggio_punti--; 
+                                    i++; 
+                                }
+                            }
+
+                            snprintf(punteggio, sizeof(punteggio), "Punteggio parola: %d", messaggio_punti); 
                             risposta->data = punteggio;
                             risposta->length = strlen(risposta->data); 
                             invia_messaggio(client_fd, risposta); 
@@ -367,6 +383,8 @@
                         pthread_mutex_unlock(&server_data->mutex_server_data); 
                     }
                     else{
+                        pthread_mutex_unlock(&server_data->mutex_tempo);
+                        
                         risposta->type = MSG_ERR; 
                         risposta->data = "Parita non ancora iniziata. Attendi."; 
                         risposta->length = strlen(risposta->data); 
@@ -375,7 +393,6 @@
 
                         pthread_mutex_unlock(&server_data->mutex_server_data); 
                     }
-                    //Invia punteggio al client se tutto corretto altrimenti MSG_ERR
                     break; 
 
                 default: 
@@ -396,7 +413,6 @@
         free(msg); 
 
         
-        //free(risposta->data);
         free(risposta); 
 
         close(client_fd); 
@@ -413,7 +429,7 @@ void *gestione_tempo_partita(void* args){
 
         if(server_data->partita_in_corso){
             server_data->partita_in_corso = 0;
-            server_data->timer = 60;  
+            server_data->timer = 10;  
             timer = server_data->timer; 
             genera_matrice(server_data); 
             stampa_matrice(server_data->paroliere); 
