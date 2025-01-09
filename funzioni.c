@@ -138,14 +138,30 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 }
 
+void inizializza_buffer_circolare(Buffer_circolare *buff){
 
+    pthread_mutex_init(&buff->mutex_buffer_c, NULL); 
+    pthread_cond_init(&buff->buffer_not_full, NULL);
+    pthread_cond_init(&buff->buffer_not_empty, NULL); 
+    pthread_cond_init(&buff->ready_buffer, NULL);  
 
-//FUNZIONI SERVER
+    pthread_mutex_lock(&buff->mutex_buffer_c);
+    buff->head = 0; 
+    buff->tail = 0;
+    buff->counter = 0; 
+    pthread_mutex_unlock(&buff->mutex_buffer_c); 
 
+}
 
 void inizializza_server_data(Server_data *server_data){
+
     pthread_mutex_init(&server_data->mutex_server_data, NULL); 
     pthread_mutex_init(&server_data->mutex_tempo, NULL); 
+
+    inizializza_buffer_circolare(&server_data->buffer_punteggi);
+
+    pthread_cond_init(&server_data->cond_classifica, NULL);
+    pthread_cond_init(&server_data->fine_partita, NULL);
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
     server_data->lista_giocatori = NULL; 
@@ -153,6 +169,8 @@ void inizializza_server_data(Server_data *server_data){
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
     server_data->root_trie = crea_nodo(); 
+    server_data->classifica = NULL; 
+    server_data->prima_partita = 1; 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
@@ -256,6 +274,24 @@ int cerca_giocatore(Server_data* server_data, char* username){
     return 0; 
 }
 
+Giocatore *restituisci_giocatore(Server_data* server_data, int socket_fd){
+    
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *curr = server_data->lista_giocatori;
+
+    while(curr != NULL){
+        if(curr->socket == socket_fd){
+            pthread_mutex_unlock(&server_data->mutex_server_data); 
+            return curr; 
+        }
+        curr = curr->next; 
+    }
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+
+    return 0; 
+}
 
 void stampa_lista_giocatori(Server_data* server_data){
 
@@ -393,6 +429,44 @@ void to_uppercase(char *str){
     }
 }
 
+void produttore(Buffer_circolare *buff, int punti, char* username){
+
+    pthread_mutex_lock(&buff->mutex_buffer_c); 
+
+    //Buffer pieno
+    while(buff->counter == MAX_CLIENT){
+        pthread_cond_wait(&buff->buffer_not_full, &buff->mutex_buffer_c);
+    }
+
+    strncpy(buff->buffer[buff->tail].nome, username, USERNAME_LENGTH - 1);
+    buff->buffer[buff->tail].punti = punti; 
+
+    buff->tail = (buff->tail + 1) & MAX_CLIENT;
+    buff->counter++; 
+
+    pthread_cond_signal(&buff->buffer_not_empty);
+    pthread_mutex_unlock(&buff->mutex_buffer_c); 
+}
+
+Punti_fine consumatore(Buffer_circolare *buff){
+
+    //pthread_mutex_lock(&buff->mutex_buffer_c);
+
+    //buffer vuoto
+    while(buff->counter == 0){
+        pthread_cond_wait(&buff->buffer_not_empty, &buff->mutex_buffer_c); 
+    }
+
+    Punti_fine punti_finali = buff->buffer[buff->head]; 
+    buff->head = (buff->head + 1) % MAX_CLIENT; 
+    buff->counter--; 
+
+    pthread_cond_signal(&buff->buffer_not_full);
+   //pthread_mutex_unlock(&buff->mutex_buffer_c); 
+
+    return punti_finali;
+}
+
 //FUNZIONE DI CLEANUP
 void cleanup(Server_data *server_data){
 
@@ -437,6 +511,8 @@ void cleanup(Server_data *server_data){
 
     pthread_mutex_destroy(&server_data->mutex_server_data); 
     pthread_mutex_destroy(&server_data->mutex_tempo); 
+
+    free(server_data); 
 }
 
 void stringa_in_paroliere(char * str, Client_t * client){

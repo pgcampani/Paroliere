@@ -41,17 +41,38 @@ typedef struct nodoG{
 }Giocatore; 
 
 typedef struct{
+    char nome[USERNAME_LENGTH]; 
+    int punti; 
+}Punti_fine; 
+
+typedef struct{
+    Punti_fine buffer[MAX_CLIENT]; 
+    int head; 
+    int tail; 
+    int counter; 
+    pthread_mutex_t mutex_buffer_c; 
+    pthread_cond_t buffer_not_full;
+    pthread_cond_t buffer_not_empty; 
+    pthread_cond_t ready_buffer; 
+}Buffer_circolare;
+
+typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
     Giocatore *lista_giocatori; 
     int count_giocatori; 
     char * data_filename; 
     FILE * matrix_file; 
+    char * classifica; 
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
+    pthread_cond_t cond_classifica; 
+    pthread_cond_t fine_partita; 
     TrieNode * root_trie; 
     int durata_partita; 
     int partita_in_corso;
+    int prima_partita;
     int timer;
+    Buffer_circolare buffer_punteggi;
 }Server_data; 
 
 typedef struct{
@@ -96,6 +117,8 @@ void *client_handler(void*);
 
 void *gestione_tempo_partita(void*); 
 
+void *scorer(void*);
+
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
 
@@ -109,8 +132,18 @@ int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRI
 
 int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
+//BufferCircolare
+
+void inizializza_buffer_circolare(Buffer_circolare*); 
+
+void produttore(Buffer_circolare *, int, char*);
+
+Punti_fine consumatore(Buffer_circolare*);
+
 //Gestione utente
 int cerca_giocatore(Server_data*, char*);
+
+Giocatore * restituisci_giocatore(Server_data*, int); 
 
 void cancella_utente(Server_data*, int); 
 

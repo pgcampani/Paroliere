@@ -18,12 +18,12 @@
     #include "macros.h"
     #include "types.h"
 
-    volatile sig_atomic_t running = 1; 
+    int running = 1; 
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER;
 
     void sigint_handler(int signum){
         if(signum == SIGINT){
-            pthread_mutex_lock(&mutex_running); 
+            pthread_mutex_lock(&mutex_running);
             running = 0; 
             pthread_mutex_unlock(&mutex_running); 
         }
@@ -118,16 +118,21 @@
 
 
         //Inizializzazione dati server
-        Server_data server_data; 
-        inizializza_server_data(&server_data); 
-        server_data.data_filename = data_filename; 
-        server_data.durata_partita = durata_in_minuti;
-        server_data.root_trie = load_file(server_data.root_trie, "dizionario_ita.txt");
+        Server_data *server_data = (Server_data*)malloc(sizeof(Server_data));
+        if(server_data == NULL){
+            perror("Nella malloc"); 
+            exit(EXIT_FAILURE); 
+        } 
+        inizializza_server_data(server_data); 
+        server_data->data_filename = data_filename; 
+        server_data->durata_partita = durata_in_minuti;
+        server_data->root_trie = load_file(server_data->root_trie, "dizionario_ita.txt");
 
-        pthread_t thread_tempo; 
+        pthread_t thread_tempo, thread_scorer; 
 
-        pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)&server_data);
-        
+        pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)server_data);
+        //pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
+
         while(1){
 
             pthread_mutex_lock(&mutex_running);
@@ -159,7 +164,7 @@
             }
 
             args->client_fd = client_fd; 
-            args->server_data = &server_data; 
+            args->server_data = server_data; 
 
             pthread_t client_thread; 
 
@@ -168,7 +173,7 @@
         }
 
         pthread_join(thread_tempo, NULL);
-        cleanup(&server_data);
+        cleanup(server_data);
         pthread_mutex_lock(&mutex_running);
         pthread_mutex_unlock(&mutex_running); 
         pthread_mutex_destroy(&mutex_running); 
@@ -395,23 +400,49 @@
                     }
                     break; 
 
+                case MSG_MATRICE:
+
+                    risposta->type = MSG_MATRICE; 
+                    pthread_mutex_lock(&server_data->mutex_server_data);
+                    risposta->data = paroliere_in_stringa(server_data->paroliere); 
+                    pthread_mutex_unlock(&server_data->mutex_server_data); 
+                    risposta->length = strlen(risposta->data); 
+                    invia_messaggio(client_fd, risposta); 
+                    free(risposta->data); 
+
+                    pthread_mutex_lock(&server_data->mutex_tempo); 
+                    if(server_data->partita_in_corso){
+                        risposta->type = MSG_TEMPO_PARTITA;
+                        snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo fine partita %d\n", server_data->timer);
+                    }
+                    else{
+                        risposta->type = MSG_TEMPO_ATTESA; 
+                        snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo a inizio partita %d\n", server_data->timer);  
+                    }
+                    risposta->data = stringa_tempo; 
+                    risposta->length = strlen(stringa_tempo); 
+                    pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                    invia_messaggio(client_fd, risposta);
+
+                    break;
+
                 default: 
                     risposta->type = MSG_ERR; 
                     risposta->data = "Comando non riconosciuto"; 
                     risposta->length = strlen(risposta->data); 
                     invia_messaggio(client_fd, risposta); 
                     break; 
-            }
-            
+            } 
+
             free(msg->data);
             free(msg); 
-            msg = NULL; 
+            msg = NULL;
 
         }
         
         free(msg->data);
         free(msg); 
-
         
         free(risposta); 
 
@@ -425,22 +456,32 @@ void *gestione_tempo_partita(void* args){
 
     while(1){
 
+        pthread_mutex_lock(&server_data->mutex_server_data); 
+
         pthread_mutex_lock(&server_data->mutex_tempo);
 
         if(server_data->partita_in_corso){
             server_data->partita_in_corso = 0;
+
+            pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+            pthread_mutex_unlock(&server_data->mutex_server_data); 
+
+            pthread_mutex_lock(&server_data->mutex_tempo);
             server_data->timer = 10;  
             timer = server_data->timer; 
+            pthread_mutex_unlock(&server_data->mutex_tempo); 
             genera_matrice(server_data); 
             stampa_matrice(server_data->paroliere); 
         }
         else{
+            server_data->prima_partita = 0; 
             server_data->partita_in_corso = 1; 
             server_data->timer = server_data->durata_partita * 60;
             timer = server_data->timer; 
+            pthread_mutex_unlock(&server_data->mutex_tempo); 
+            pthread_mutex_unlock(&server_data->mutex_server_data);
         }
-
-        pthread_mutex_unlock(&server_data->mutex_tempo); 
 
         while(timer){
 
@@ -461,3 +502,4 @@ void *gestione_tempo_partita(void* args){
         }
     }
 }
+

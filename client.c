@@ -187,6 +187,10 @@
                         break; 
                     }
                 }
+
+                else if(strcmp(comando, "matrice") == 0 || strcmp(comando, "parola") == 0){
+                    printf("Comando non valido. Si prega di registrarsi\n");
+                }
                 
                 else{
                     printf("Comando non valido. Digita aiuto per vedere i comandi disponibili\n"); 
@@ -237,6 +241,23 @@
                             printf("Parola già inviata\n");
                             pthread_mutex_unlock(&mutex_client); 
                         }
+                    }
+                }
+
+                else if(strcmp(comando, "matrice") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: matrice\n"); 
+                    }
+                    else{
+                        pthread_mutex_lock(&mutex_client); 
+                        msg->type = MSG_MATRICE; 
+                        msg->data = NULL; 
+                        msg->length = 0; 
+
+                        invia_messaggio(socket_fd, msg);
+                        
+                        pthread_cond_wait(&cond_client, &mutex_client); 
+                        pthread_mutex_unlock(&mutex_client); 
                     }
                 }
 
