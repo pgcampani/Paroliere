@@ -131,7 +131,7 @@
         pthread_t thread_tempo, thread_scorer; 
 
         pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)server_data);
-        //pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
+        pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
 
         while(1){
 
@@ -172,6 +172,7 @@
 
         }
 
+        pthread_join(thread_scorer, NULL); 
         pthread_join(thread_tempo, NULL);
         cleanup(server_data);
         pthread_mutex_lock(&mutex_running);
@@ -277,7 +278,6 @@
             switch(msg->type){
 
                 case MSG_REGISTRA_UTENTE: 
-
                     if(msg->length == 0 || msg->length > 10){
                         risposta->type = MSG_ERR; 
                         risposta->data = "La lunghezza dell'username deve essere compresa tra 1 e 10 caratteri";
@@ -347,14 +347,20 @@
 
                     to_uppercase(msg->data);
 
+                    pthread_mutex_unlock(&server_data->mutex_server_data); 
+
                     pthread_mutex_lock(&server_data->mutex_tempo);
 
                     if(server_data->partita_in_corso){
-                        pthread_mutex_unlock(&server_data->mutex_tempo);
+                        
+                        pthread_mutex_unlock(&server_data->mutex_tempo); 
 
                         int parola_corretta; 
 
                         printf("parola inviata: %s\n", msg->data); 
+
+                        pthread_mutex_lock(&server_data->mutex_server_data); 
+
                         parola_corretta = parola_presente(server_data->paroliere, msg->data);
 
                         if(parola_corretta && search_word(server_data->root_trie, msg->data)){
@@ -386,17 +392,15 @@
                             invia_messaggio(client_fd, risposta);
                         }
                         pthread_mutex_unlock(&server_data->mutex_server_data); 
+
                     }
                     else{
-                        pthread_mutex_unlock(&server_data->mutex_tempo);
-                        
+                        pthread_mutex_unlock(&server_data->mutex_tempo); 
                         risposta->type = MSG_ERR; 
                         risposta->data = "Parita non ancora iniziata. Attendi."; 
                         risposta->length = strlen(risposta->data); 
 
                         invia_messaggio(client_fd, risposta); 
-
-                        pthread_mutex_unlock(&server_data->mutex_server_data); 
                     }
                     break; 
 
@@ -433,6 +437,45 @@
                     risposta->length = strlen(risposta->data); 
                     invia_messaggio(client_fd, risposta); 
                     break; 
+            }
+
+            pthread_mutex_lock(&server_data->mutex_tempo);
+
+            if(server_data->partita_in_corso == 0){
+                printf("SONO IN IF\n"); 
+                pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                Giocatore *giocatore = restituisci_giocatore(server_data, client_fd); 
+                printf("Punti totali: %d\n", giocatore->score); 
+
+                if(giocatore->score > 0){
+                    printf("INSERISCO IL PUNTEGGIO DEL MIO GIOCATORE\n"); 
+                    produttore(&server_data->buffer_punteggi, giocatore->score, giocatore->username); 
+
+                    pthread_mutex_lock(&server_data->mutex_server_data);
+                
+                    printf("ATTENDO LO SCORER\n"); 
+                    pthread_cond_wait(&server_data->cond_classifica, &server_data->mutex_server_data); 
+                    printf("LO SCORER HA FINITO\n");
+                    pthread_mutex_unlock(&server_data->mutex_server_data); 
+                } 
+
+                pthread_mutex_lock(&server_data->mutex_server_data); 
+
+                printf("classifica: %s\n", server_data->classifica); 
+
+                if(server_data->classifica[0] != '\0'){
+                    msg->type = MSG_PUNTI_FINALI;
+                    msg->data = server_data->classifica;
+                    msg->length = strlen(server_data->classifica);
+                    invia_messaggio(client_fd, msg); 
+                }
+
+                printf("STO PER USCIRE DA IF\n"); 
+                pthread_mutex_unlock(&server_data->mutex_server_data); 
+            }
+            else{
+                pthread_mutex_unlock(&server_data->mutex_tempo); 
             } 
 
             free(msg->data);
@@ -456,31 +499,29 @@ void *gestione_tempo_partita(void* args){
 
     while(1){
 
-        pthread_mutex_lock(&server_data->mutex_server_data); 
-
         pthread_mutex_lock(&server_data->mutex_tempo);
 
         if(server_data->partita_in_corso){
             server_data->partita_in_corso = 0;
 
+            pthread_cond_signal(&server_data->fine_partita);
             pthread_mutex_unlock(&server_data->mutex_tempo); 
-
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
 
             pthread_mutex_lock(&server_data->mutex_tempo);
             server_data->timer = 10;  
             timer = server_data->timer; 
             pthread_mutex_unlock(&server_data->mutex_tempo); 
-            genera_matrice(server_data); 
+            genera_matrice(server_data);
+            pthread_mutex_lock(&server_data->mutex_server_data); 
             stampa_matrice(server_data->paroliere); 
+            pthread_mutex_unlock(&server_data->mutex_server_data); 
+            printf("STAMPATO\n"); 
         }
         else{
-            server_data->prima_partita = 0; 
             server_data->partita_in_corso = 1; 
             server_data->timer = server_data->durata_partita * 60;
             timer = server_data->timer; 
             pthread_mutex_unlock(&server_data->mutex_tempo); 
-            pthread_mutex_unlock(&server_data->mutex_server_data);
         }
 
         while(timer){
@@ -503,3 +544,36 @@ void *gestione_tempo_partita(void* args){
     }
 }
 
+void *scorer(void* args){
+    Server_data* server_data = (Server_data*)args; 
+
+    while(1){
+
+        pthread_mutex_lock(&server_data->mutex_tempo);
+
+        while(server_data->partita_in_corso){
+            pthread_cond_wait(&server_data->fine_partita, &server_data->mutex_tempo);
+        }
+
+        pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+        pthread_mutex_lock(&server_data->buffer_punteggi.mutex_buffer_c);
+
+        char classifica[MAX_BUFFER] = "";
+        while(server_data->buffer_punteggi.counter > 0){
+            Punti_fine punti = consumatore(&server_data->buffer_punteggi);
+            char temp[MAX_BUFFER];
+            snprintf(temp, sizeof(temp), "%s,%d", punti.nome, punti.punti);
+            strncat(classifica, temp, sizeof(classifica) - strlen(classifica) - 1);
+        }
+        pthread_mutex_unlock(&server_data->buffer_punteggi.mutex_buffer_c);
+
+        pthread_mutex_lock(&server_data->mutex_server_data); 
+
+        strncpy(server_data->classifica, classifica, sizeof(server_data->classifica) - 1);
+        server_data->classifica[sizeof(server_data->classifica) - 1] = '\0';
+        
+        pthread_cond_broadcast(&server_data->cond_classifica); 
+        pthread_mutex_unlock(&server_data->mutex_server_data); 
+    }
+}

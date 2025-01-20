@@ -143,7 +143,6 @@ void inizializza_buffer_circolare(Buffer_circolare *buff){
     pthread_mutex_init(&buff->mutex_buffer_c, NULL); 
     pthread_cond_init(&buff->buffer_not_full, NULL);
     pthread_cond_init(&buff->buffer_not_empty, NULL); 
-    pthread_cond_init(&buff->ready_buffer, NULL);  
 
     pthread_mutex_lock(&buff->mutex_buffer_c);
     buff->head = 0; 
@@ -169,8 +168,11 @@ void inizializza_server_data(Server_data *server_data){
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
     server_data->root_trie = crea_nodo(); 
-    server_data->classifica = NULL; 
-    server_data->prima_partita = 1; 
+    server_data->classifica = (char *)malloc(MAX_BUFFER * sizeof(char)); 
+    if(server_data->classifica == NULL){
+        perror("Errore nella malloc");
+        exit(EXIT_FAILURE); 
+    }
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
@@ -416,7 +418,6 @@ void aggiorna_punti_giocatore(Server_data* server_data, int socket, char* parola
         }
         temp = temp->next; 
     }
-
     return; 
 }
 
@@ -506,6 +507,8 @@ void cleanup(Server_data *server_data){
     }
 
     free_trie(server_data->root_trie); 
+    
+    free(server_data->classifica); 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 

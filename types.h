@@ -53,7 +53,6 @@ typedef struct{
     pthread_mutex_t mutex_buffer_c; 
     pthread_cond_t buffer_not_full;
     pthread_cond_t buffer_not_empty; 
-    pthread_cond_t ready_buffer; 
 }Buffer_circolare;
 
 typedef struct{
@@ -70,7 +69,6 @@ typedef struct{
     TrieNode * root_trie; 
     int durata_partita; 
     int partita_in_corso;
-    int prima_partita;
     int timer;
     Buffer_circolare buffer_punteggi;
 }Server_data; 
