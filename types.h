@@ -32,10 +32,10 @@ typedef struct{
 typedef struct nodoG{
     int socket; 
     char username[USERNAME_LENGTH]; 
-    int score; 
-    //unsigned int stato; //0 non connesso, 1 connesso, 2 connesso ma non in gioco, 3 in gioco
-    int connesso;
+    int score;
+    int connesso; 
     int in_gioco; 
+    //unsigned int stato; //0 non connesso, 1 connesso, 2 connesso ma non in gioco, 3 in gioco
     pthread_t tid; 
     struct nodoG * next; 
 }Giocatore; 
@@ -64,18 +64,22 @@ typedef struct{
     char * classifica; 
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
-    pthread_cond_t cond_classifica; 
+    pthread_cond_t cond_punteggi_pronti; 
+    pthread_cond_t cond_classifica_pronta; 
     pthread_cond_t fine_partita; 
     TrieNode * root_trie; 
     int durata_partita; 
     int partita_in_corso;
     int timer;
+    int terminazione_thread; 
     Buffer_circolare buffer_punteggi;
 }Server_data; 
 
 typedef struct{
     int client_fd; 
     Server_data *server_data; 
+    pthread_t messaggi_tid;
+    pthread_t punti_tid;  
 }ClientHandlerArgs;
 
 typedef struct Parola{
@@ -112,6 +116,10 @@ void invia_messaggio(int, Messaggio*);
 void inizializza_server_data(Server_data*);
 
 void *client_handler(void*); 
+
+void *handler_messaggi(void*); 
+
+void *handler_punteggio(void*); 
 
 void *gestione_tempo_partita(void*); 
 

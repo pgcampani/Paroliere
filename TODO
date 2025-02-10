@@ -1,7 +1,6 @@
 1. unica variabile per stato giocatore ??
 2. ricordarsi di eliminare la lista ad ogni partita -> la lista viene eliminata dal client quando il server invia la classifica
 6. Disconnessione utente da CTRL-C e cancellazione utente + login 
-8. Dividi file funzione per funzioni server e funzioni client
 9. Distruggi mutex nel client e porta mutex da variabile globale alla struct del client
 10. DEALLOCARE SOCKET CLIENT
 12. Thread scorer
@@ -10,3 +9,4 @@
 15. MAKEFILE
 16. Test per debugging
 17. Timeout giocatore
+18. Far controllare dai thread se il client è attivo altrimenti notificare a tutti i thread e chiudere gestore client

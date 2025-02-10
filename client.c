@@ -20,7 +20,8 @@
 
     #define LINEA_DI_COMANDO 1024
 
-    volatile sig_atomic_t exit_signal = 0; 
+    int exit_signal = 0; 
+    Messaggio * msg_server;
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
     pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
@@ -272,14 +273,16 @@
             }
         }
 
+        close(client->socket_fd); 
         pthread_cancel(risposta_handler); 
         pthread_join(risposta_handler, NULL);
-        close(client->socket_fd); 
+        if(msg_server){
+            free(msg_server); 
+        }
         free(client); 
         free(msg); 
         return 0;
     }
-
     
     void *server_handler(void* args){
 
@@ -290,57 +293,92 @@
 
         while(1){
 
-            pthread_mutex_lock(&mutex_running);
-            if(exit_signal){
-                pthread_mutex_unlock(&mutex_running); 
+            int retvalue; 
+            msg_server = (Messaggio*)malloc(sizeof(Messaggio)); 
+            if(msg_server == NULL){
+                perror("Errore nella malloc"); 
+                exit(EXIT_FAILURE); 
+            }
+
+            //Inizializzo i valori default
+            msg_server->data = NULL; 
+            msg_server->type = '\0'; 
+            msg_server->length = 0;
+
+
+            SYSC(retvalue, read(socket_fd, &msg_server->length, sizeof(unsigned int)), "Nella read"); 
+            if(retvalue == -1){
+                pthread_mutex_lock(&mutex_client);
+                if(exit_signal == 1){
+                    pthread_mutex_unlock(&mutex_client); 
+                    free(msg_server);
+                    break; 
+                }
+                free(msg_server);
                 break; 
             }
+            SYSC(retvalue, read(socket_fd, &msg_server->type, sizeof(char)), "Nella read"); 
+            //Alloco memoria per contenuto messaggio 
+            msg_server->data = (char*)malloc(sizeof(char) * msg_server->length + 1); 
+            if(msg_server->data == NULL){
+                perror("Nella malloc"); 
+                exit(EXIT_FAILURE); 
+            }
+
+            SYSC(retvalue, read(socket_fd, msg_server->data, msg_server->length), "Nella read");
+             
+            msg_server->data[msg_server->length] = '\0';  //Terminatore stringa
+
+            pthread_mutex_lock(&mutex_running);
+                if(exit_signal){ 
+                    pthread_mutex_unlock(&mutex_running);
+                    free(msg_server->data);
+                    free(msg_server);
+                    break; 
+                }
+
             pthread_mutex_unlock(&mutex_running); 
-
-            Messaggio *msg; 
-
-            msg = leggi_messaggio(socket_fd); 
 
             pthread_mutex_lock(&mutex_client); 
 
-            switch(msg->type){
+            switch(msg_server->type){
 
                 case MSG_OK: 
                     client->registrato = 1; 
-                    printf("%s\n", msg->data); 
+                    printf("%s\n", msg_server->data); 
                     break; 
                 
                 case MSG_ERR:
-                    printf("%s\n", msg->data); 
-                    if(strcmp(msg->data, "Parita non ancora iniziata. Attendi.") == 0){
+                    printf("%s\n", msg_server->data); 
+                    if(strcmp(msg_server->data, "Parita non ancora iniziata. Attendi.") == 0){
                         rimuovi_parole(client); 
                     }
                     pthread_cond_signal(&cond_client); 
                     break;
 
                 case MSG_MATRICE: 
-                    stringa_in_paroliere(msg->data, client);
+                    stringa_in_paroliere(msg_server->data, client);
                     stampa_matrice(client->paroliere_client); 
                     break;  
 
                 case MSG_TEMPO_PARTITA:
-                    printf("%s\n", msg->data); 
+                    printf("%s\n", msg_server->data); 
                     pthread_cond_signal(&cond_client);
                     break; 
                 
                 case MSG_TEMPO_ATTESA: 
-                    printf("%s\n", msg->data); 
+                    printf("%s\n", msg_server->data); 
                     pthread_cond_signal(&cond_client);
                     break; 
 
                 case MSG_PUNTI_PAROLA: 
-                    printf("Punti parola: %s\n", msg->data); 
+                    printf("Punti parola: %s\n", msg_server->data); 
                     pthread_cond_signal(&cond_client); 
                     break; 
                 
                 case MSG_SERVER_SHUTDONW:
 
-                    printf("%s\n", msg->data); 
+                    printf("%s\n", msg_server->data); 
                     printf("Digita un tasto qualsiasi per terminare-->"); 
                     fflush(stdout);
                     pthread_mutex_unlock(&mutex_client); 
@@ -349,8 +387,8 @@
                     exit_signal = 1; 
                     pthread_mutex_unlock(&mutex_running);
                     
-                    free(msg->data);
-                    free(msg); 
+                    free(msg_server->data);
+                    free(msg_server); 
 
                     close(socket_fd);
                     pthread_exit(NULL); 
@@ -358,8 +396,8 @@
 
             }
             pthread_mutex_unlock(&mutex_client); 
-            free(msg->data); 
-            free(msg); 
+            free(msg_server->data); 
+            free(msg_server); 
         } 
         pthread_exit(NULL); 
     }

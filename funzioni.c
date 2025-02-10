@@ -106,12 +106,16 @@ Messaggio* leggi_messaggio(int file_descriptor){
     //Inizializzo i valori default
     msg->data = NULL; 
     msg->type = '\0'; 
-    msg->length = 0; 
+    msg->length = 0;
 
     SYSC(retvalue, read(file_descriptor, &msg->length, sizeof(unsigned int)), "Nella read"); 
+    if(retvalue == -1 && errno == EINTR){
+        printf("VOGLIONO CHIUDERE\n"); 
+        free(msg);
+        return NULL; 
+    }
 
     SYSC(retvalue, read(file_descriptor, &msg->type, sizeof(char)), "Nella read"); 
-
     //Alloco memoria per contenuto messaggio 
     msg->data = (char*)malloc(sizeof(char) * msg->length + 1); 
     if(msg->data == NULL){
@@ -120,7 +124,6 @@ Messaggio* leggi_messaggio(int file_descriptor){
     }
 
     SYSC(retvalue, read(file_descriptor, msg->data, msg->length), "Nella read"); 
-
     msg->data[msg->length] = '\0';  //Terminatore stringa
 
     return msg; 
@@ -149,7 +152,6 @@ void inizializza_buffer_circolare(Buffer_circolare *buff){
     buff->tail = 0;
     buff->counter = 0; 
     pthread_mutex_unlock(&buff->mutex_buffer_c); 
-
 }
 
 void inizializza_server_data(Server_data *server_data){
@@ -159,7 +161,8 @@ void inizializza_server_data(Server_data *server_data){
 
     inizializza_buffer_circolare(&server_data->buffer_punteggi);
 
-    pthread_cond_init(&server_data->cond_classifica, NULL);
+    pthread_cond_init(&server_data->cond_punteggi_pronti, NULL); 
+    pthread_cond_init(&server_data->cond_classifica_pronta, NULL);
     pthread_cond_init(&server_data->fine_partita, NULL);
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
@@ -168,6 +171,11 @@ void inizializza_server_data(Server_data *server_data){
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
     server_data->root_trie = crea_nodo(); 
+    server_data->terminazione_thread = 0; 
+    if(server_data->root_trie == NULL){
+        perror("Nella creazione nodo trie");
+        exit(EXIT_FAILURE); 
+    }
     server_data->classifica = (char *)malloc(MAX_BUFFER * sizeof(char)); 
     if(server_data->classifica == NULL){
         perror("Errore nella malloc");
@@ -237,6 +245,7 @@ void cancella_utente(Server_data* server_data, int socket){
 
     if(temp == NULL){
         printf("Giocatore non trovato\n"); 
+        pthread_mutex_unlock(&server_data->mutex_server_data); 
         return; 
     }
     
@@ -292,12 +301,16 @@ Giocatore *restituisci_giocatore(Server_data* server_data, int socket_fd){
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 
-    return 0; 
+    return NULL; 
 }
 
 void stampa_lista_giocatori(Server_data* server_data){
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    if(server_data->lista_giocatori == NULL){
+        printf("Nessun giocatore connesso\n"); 
+    }
 
     Giocatore *temp = server_data->lista_giocatori; 
 
@@ -489,13 +502,13 @@ void cleanup(Server_data *server_data){
     while(curr != NULL){
         invia_messaggio(curr->socket, &msg);
 
-        if(pthread_cancel(curr->tid) != 0){
+        /*if(pthread_cancel(curr->tid) != 0){
             perror("Errore nella pthread_cancel"); 
         }
 
         if(pthread_join(curr->tid, NULL) != 0){
             perror("Errore durante pthread_join"); 
-        }
+        }*/
 
         if(close(curr->socket) == -1){
             perror("Errore in chiusura socket"); 
@@ -512,8 +525,9 @@ void cleanup(Server_data *server_data){
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 
-    pthread_mutex_destroy(&server_data->mutex_server_data); 
-    pthread_mutex_destroy(&server_data->mutex_tempo); 
+    pthread_mutex_destroy(&server_data->mutex_server_data);
+
+    //pthread_mutex_destroy(&server_data->mutex_tempo); 
 
     free(server_data); 
 }
