@@ -163,6 +163,7 @@ void inizializza_server_data(Server_data *server_data){
 
     pthread_cond_init(&server_data->cond_punteggi_pronti, NULL); 
     pthread_cond_init(&server_data->cond_classifica_pronta, NULL);
+    pthread_cond_init(&server_data->inizio_partita, NULL); 
     pthread_cond_init(&server_data->fine_partita, NULL);
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
@@ -170,8 +171,8 @@ void inizializza_server_data(Server_data *server_data){
     server_data->count_giocatori = 0; 
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
-    server_data->root_trie = crea_nodo(); 
-    server_data->terminazione_thread = 0; 
+    server_data->root_trie = crea_nodo();
+    server_data->terminazione_thread = 0;  
     if(server_data->root_trie == NULL){
         perror("Nella creazione nodo trie");
         exit(EXIT_FAILURE); 
@@ -490,30 +491,11 @@ void cleanup(Server_data *server_data){
         fclose(server_data->matrix_file); 
         server_data->matrix_file = NULL; 
     }
-
-    //invia_shtudown
-    Messaggio msg; 
-    msg.type = MSG_SERVER_SHUTDONW; 
-    msg.data = "Chiusura server"; 
-    msg.length = strlen(msg.data); 
+ 
 
     Giocatore *curr = server_data->lista_giocatori; 
 
     while(curr != NULL){
-        invia_messaggio(curr->socket, &msg);
-
-        /*if(pthread_cancel(curr->tid) != 0){
-            perror("Errore nella pthread_cancel"); 
-        }
-
-        if(pthread_join(curr->tid, NULL) != 0){
-            perror("Errore durante pthread_join"); 
-        }*/
-
-        if(close(curr->socket) == -1){
-            perror("Errore in chiusura socket"); 
-        } 
-
         Giocatore *rimuovi = curr; 
         curr = curr->next; 
         free(rimuovi); 
@@ -527,7 +509,7 @@ void cleanup(Server_data *server_data){
 
     pthread_mutex_destroy(&server_data->mutex_server_data);
 
-    //pthread_mutex_destroy(&server_data->mutex_tempo); 
+    pthread_mutex_destroy(&server_data->mutex_tempo); 
 
     free(server_data); 
 }

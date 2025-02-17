@@ -66,6 +66,7 @@ typedef struct{
     pthread_mutex_t mutex_tempo; 
     pthread_cond_t cond_punteggi_pronti; 
     pthread_cond_t cond_classifica_pronta; 
+    pthread_cond_t inizio_partita; 
     pthread_cond_t fine_partita; 
     TrieNode * root_trie; 
     int durata_partita; 
@@ -123,7 +124,7 @@ void *handler_punteggio(void*);
 
 void *gestione_tempo_partita(void*); 
 
-void *scorer(void*);
+//void *scorer(void*);
 
 //PAROLIERE 
 void matrice_casuale(Server_data *); 

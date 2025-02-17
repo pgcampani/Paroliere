@@ -18,20 +18,69 @@
     #include "macros.h"
     #include "types.h"
 
-    int running = 1; 
+    int running = 1;
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER;
+
+    int active_threads = 0;
+
+    pthread_mutex_t active_threads_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    Server_data *global_server_data = NULL;
+    
+    void increment_active_threads() {
+        pthread_mutex_lock(&active_threads_mutex);
+        active_threads++;
+        pthread_mutex_unlock(&active_threads_mutex);
+    }
+    
+    void decrement_active_threads() {
+        pthread_mutex_lock(&active_threads_mutex);
+        active_threads--;
+        pthread_mutex_unlock(&active_threads_mutex);
+    }
     
     int global_server_fd = -1; 
     
     void sigint_handler(int signum){
+
+        //invia_shtudown
+        Messaggio msg; 
+        msg.type = MSG_SERVER_SHUTDONW; 
+        msg.data = "Chiusura server"; 
+        msg.length = strlen(msg.data);
+
         if(signum == SIGINT){
             pthread_mutex_lock(&mutex_running);
             running = 0; 
             pthread_mutex_unlock(&mutex_running); 
 
+            pthread_mutex_lock(&global_server_data->mutex_tempo);
+            global_server_data->partita_in_corso = 0;
+            
+            pthread_cond_broadcast(&global_server_data->inizio_partita);
+            pthread_cond_broadcast(&global_server_data->fine_partita);
+
+            pthread_mutex_unlock(&global_server_data->mutex_tempo); 
+
             if(global_server_fd != -1){
                 close(global_server_fd); 
             }
+
+            pthread_mutex_lock(&global_server_data->mutex_server_data);
+
+            Giocatore *curr = global_server_data->lista_giocatori; 
+
+            while(curr != NULL){
+
+                invia_messaggio(curr->socket, &msg);
+
+                if(close(curr->socket) == -1){
+                    perror("Errore in chiusura socket"); 
+                } 
+
+                curr = curr->next;
+            }
+            pthread_mutex_unlock(&global_server_data->mutex_server_data); 
         }
     }
 
@@ -136,10 +185,14 @@
         server_data->durata_partita = durata_in_minuti;
         server_data->root_trie = load_file(server_data->root_trie, "dizionario_ita.txt");
 
+        global_server_data = server_data; 
+
         pthread_t thread_tempo, thread_scorer; 
 
         pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)server_data);
-        pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
+        increment_active_threads();
+        //pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
+        //increment_active_threads();
 
         while(1){
 
@@ -167,7 +220,9 @@
                     break; 
                 }
                 pthread_mutex_unlock(&mutex_running); 
-        
+                
+                pthread_cancel(thread_tempo); 
+
                 perror("Nella accept"); 
                 free(args); 
                 continue; 
@@ -177,20 +232,26 @@
             args->server_data = server_data; 
 
             pthread_t client_thread; 
+            increment_active_threads();
             SYSC(retvalue, pthread_create(&client_thread, NULL, client_handler, (void*)args), "Nella pthread_create");
 
             pthread_detach(client_thread);   
         }
 
-        pthread_join(thread_scorer, NULL); 
+        //pthread_join(thread_scorer, NULL); 
 
         pthread_join(thread_tempo, NULL);
 
+        pthread_mutex_lock(&server_data->mutex_tempo);
+        pthread_cond_broadcast(&server_data->fine_partita); 
+        pthread_mutex_unlock(&server_data->mutex_tempo); 
+
         cleanup(server_data);
 
-        //pthread_mutex_lock(&mutex_running);
-        //pthread_mutex_unlock(&mutex_running); 
-        //pthread_mutex_destroy(&mutex_running); 
+        printf("THREAD ATTIVI: %d\n", active_threads); 
+        
+        pthread_mutex_destroy(&mutex_running); 
+
         return 0; 
     }
 
@@ -204,13 +265,16 @@
         
         inserisci_giocatore(server_data, client_fd); 
     
-        SYSC(retvalue, pthread_create(&client_args->messaggi_tid, NULL, handler_messaggi, (void*)client_args), "Nella pthread_create"); 
+        SYSC(retvalue, pthread_create(&client_args->messaggi_tid, NULL, handler_messaggi, (void*)client_args), "Nella pthread_create");
+        increment_active_threads(); 
         SYSC(retvalue, pthread_create(&client_args->punti_tid, NULL, handler_punteggio, (void*)client_args), "Nella pthread_create");
+        increment_active_threads(); 
 
         pthread_join(client_args->messaggi_tid, NULL);
         pthread_join(client_args->punti_tid, NULL); 
 
         free(client_args); 
+        decrement_active_threads();
         pthread_exit(NULL); 
     }
 
@@ -234,11 +298,13 @@
         risposta->length = 0; 
         risposta->data = NULL; 
 
+
         while(1){
 
             pthread_mutex_lock(&mutex_running);
             if(running == 0){
                 pthread_mutex_unlock(&mutex_running); 
+                decrement_active_threads();
                 pthread_exit(NULL);
             }
             pthread_mutex_unlock(&mutex_running); 
@@ -259,14 +325,15 @@
             //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
             if(retvalue == 0){
                 cancella_utente(server_data, client_fd); 
+
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 server_data->terminazione_thread = 1; 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
 
                 pthread_mutex_lock(&server_data->mutex_tempo);
-                pthread_cond_signal(&server_data->fine_partita); 
+                pthread_cond_broadcast(&server_data->fine_partita); 
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
-                //pthread_cancel(client_args->punti_tid); 
+
                 break; 
             }
             else if(retvalue == -1){
@@ -276,6 +343,7 @@
                     free(risposta);
                     free(msg->data); 
                     free(msg);
+                    decrement_active_threads(); 
                     pthread_exit(NULL); 
                 } 
             }
@@ -466,6 +534,7 @@
         }
         
         free(risposta); 
+        decrement_active_threads(); 
         pthread_exit(NULL);
     }
 
@@ -473,59 +542,104 @@
         ClientHandlerArgs * client_args = (ClientHandlerArgs*)args; 
         int client_fd = client_args->client_fd;
         Server_data *server_data = client_args->server_data;
+
         
-        pthread_mutex_lock(&server_data->mutex_server_data);
-        int thread_da_terminare = server_data->terminazione_thread;
-        pthread_mutex_unlock(&server_data->mutex_server_data); 
-
-        pthread_mutex_lock(&server_data->mutex_tempo); 
-
-        while(server_data->partita_in_corso == 1){
-            pthread_cond_wait(&server_data->fine_partita, &server_data->mutex_tempo); 
+        while(1){
 
             pthread_mutex_lock(&server_data->mutex_server_data);
-            thread_da_terminare = server_data->terminazione_thread;
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
-
-            if(thread_da_terminare == 1){
-                pthread_mutex_unlock(&server_data->mutex_tempo);
+            if(server_data->terminazione_thread){
+                pthread_mutex_unlock(&server_data->mutex_server_data);
+                decrement_active_threads();
                 pthread_exit(NULL); 
             }
-        }
-
-        pthread_mutex_unlock(&server_data->mutex_tempo);
-
-        if(thread_da_terminare == 1){
-            pthread_exit(NULL); 
-        }
-
-        Giocatore *giocatore = restituisci_giocatore(server_data, client_fd); 
-        if(giocatore == NULL){
-            return NULL; 
-        }
-
-        int punteggio_inserito = 0;  
-        if(giocatore->score > 0){
-            produttore(&server_data->buffer_punteggi, giocatore->score, giocatore->username); 
-            punteggio_inserito = 1; 
-        }
-
-        pthread_mutex_lock(&server_data->mutex_server_data); 
-        pthread_mutex_lock(&server_data->buffer_punteggi.mutex_buffer_c); 
-
-        if(punteggio_inserito && server_data->buffer_punteggi.counter == server_data->count_giocatori){
-
-            pthread_cond_signal(&server_data->cond_punteggi_pronti);
-
-            pthread_mutex_unlock(&server_data->buffer_punteggi.mutex_buffer_c); 
-
             pthread_mutex_unlock(&server_data->mutex_server_data); 
-        }
-        else{
+
+
+            pthread_mutex_lock(&server_data->mutex_tempo); 
+
+            while(server_data->partita_in_corso){
+                //printf("ATTENDO...\n");
+                pthread_cond_wait(&server_data->fine_partita, &server_data->mutex_tempo); 
+                //printf("Mi hanno svegliato\n"); 
+                
+                pthread_mutex_lock(&server_data->mutex_server_data);
+
+                if(server_data->terminazione_thread){
+                    pthread_mutex_unlock(&server_data->mutex_server_data);
+                    pthread_mutex_unlock(&server_data->mutex_tempo);
+                    decrement_active_threads();
+                    pthread_exit(NULL); 
+                }
+
+                pthread_mutex_unlock(&server_data->mutex_server_data);
+
+
+                pthread_mutex_lock(&mutex_running);
+                if(running == 0){
+                    pthread_mutex_unlock(&mutex_running); 
+                    pthread_mutex_unlock(&server_data->mutex_tempo); 
+                    decrement_active_threads(); 
+                    pthread_exit(NULL);
+                }
+                pthread_mutex_unlock(&mutex_running);
+            }
+            pthread_mutex_unlock(&server_data->mutex_tempo);
+        
+            pthread_mutex_lock(&mutex_running);
+            if(running == 0){
+                pthread_mutex_unlock(&mutex_running); 
+                pthread_mutex_unlock(&server_data->mutex_tempo); 
+                decrement_active_threads(); 
+                pthread_exit(NULL);
+            }
+            pthread_mutex_unlock(&mutex_running);
+
+           Giocatore *giocatore = restituisci_giocatore(server_data, client_fd); 
+           if(giocatore != NULL){
+            int punteggio_inserito = 0; 
+            if(giocatore->score > 0){
+                produttore(&server_data->buffer_punteggi, giocatore->score, giocatore->username);
+                punteggio_inserito = 1;
+            }
+            pthread_mutex_lock(&server_data->mutex_server_data);
+            pthread_mutex_lock(&server_data->buffer_punteggi.mutex_buffer_c);
+            
+            if(punteggio_inserito && server_data->buffer_punteggi.counter == server_data->count_giocatori){
+                pthread_cond_signal(&server_data->cond_punteggi_pronti); 
+            }
             pthread_mutex_unlock(&server_data->buffer_punteggi.mutex_buffer_c);
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
+            pthread_mutex_unlock(&server_data->mutex_server_data);
+
+            }
+
+            pthread_mutex_lock(&server_data->mutex_tempo);
+            while(!server_data->partita_in_corso){
+                pthread_cond_wait(&server_data->inizio_partita, &server_data->mutex_tempo);
+                
+                pthread_mutex_lock(&server_data->mutex_server_data);
+                if(server_data->terminazione_thread){
+                    pthread_mutex_unlock(&server_data->mutex_server_data);
+                    pthread_mutex_unlock(&server_data->mutex_tempo);
+                    decrement_active_threads();
+                    pthread_exit(NULL);
+                }
+                pthread_mutex_unlock(&server_data->mutex_server_data); 
+
+                pthread_mutex_lock(&mutex_running);
+                if(running == 0){
+                    pthread_mutex_unlock(&mutex_running);
+                    pthread_mutex_unlock(&server_data->mutex_tempo);
+                    decrement_active_threads();
+                    pthread_exit(NULL);
+                }
+                pthread_mutex_unlock(&mutex_running); 
+            }
+            pthread_mutex_unlock(&server_data->mutex_tempo);
+
         }
-        return NULL; 
+
+        decrement_active_threads();
+        pthread_exit(NULL); 
     }
 
     void *gestione_tempo_partita(void* args){
@@ -538,6 +652,7 @@
 
             if(!running){
                 pthread_mutex_unlock(&mutex_running); 
+                decrement_active_threads();
                 pthread_exit(NULL); 
             }
 
@@ -546,6 +661,15 @@
             pthread_mutex_lock(&server_data->mutex_tempo);
 
             if(server_data->partita_in_corso){
+                pthread_mutex_lock(&mutex_running);
+
+                if(!running){
+                    pthread_mutex_unlock(&mutex_running); 
+                    decrement_active_threads();
+                    pthread_exit(NULL); 
+                }
+    
+                pthread_mutex_unlock(&mutex_running);
                 server_data->partita_in_corso = 0;
 
                 pthread_cond_broadcast(&server_data->fine_partita);
@@ -560,7 +684,22 @@
                 pthread_mutex_unlock(&server_data->mutex_server_data);
             }
             else{
+                pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                pthread_mutex_lock(&mutex_running);
+
+                if(!running){
+                    pthread_mutex_unlock(&mutex_running); 
+                    decrement_active_threads();
+                    pthread_exit(NULL); 
+                }
+    
+                pthread_mutex_unlock(&mutex_running);
                 server_data->partita_in_corso = 1; 
+
+                pthread_mutex_lock(&server_data->mutex_tempo);
+                pthread_cond_broadcast(&server_data->inizio_partita);
+
                 server_data->timer = server_data->durata_partita * 60;
                 timer = server_data->timer; 
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
@@ -577,17 +716,19 @@
                     pthread_mutex_unlock(&server_data->mutex_tempo); 
                     timer--;
                     sleep(1);
+                    pthread_testcancel();
                 }
                 else{
                     pthread_mutex_unlock(&mutex_running); 
+                    decrement_active_threads(); 
                     pthread_exit(NULL); 
                 }
             }
         }
     }
 
-void *scorer(void* args){
-}
+/*void *scorer(void* args){
+}*/
 /*
     Server_data* server_data = (Server_data*)args; 
 
