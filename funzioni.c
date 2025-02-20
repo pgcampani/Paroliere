@@ -141,7 +141,7 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 }
 
-void inizializza_buffer_circolare(Buffer_circolare *buff){
+/*void inizializza_buffer_circolare(Buffer_circolare *buff){
 
     pthread_mutex_init(&buff->mutex_buffer_c, NULL); 
     pthread_cond_init(&buff->buffer_not_full, NULL);
@@ -152,6 +152,16 @@ void inizializza_buffer_circolare(Buffer_circolare *buff){
     buff->tail = 0;
     buff->counter = 0; 
     pthread_mutex_unlock(&buff->mutex_buffer_c); 
+}*/
+
+void inizializza_array_punteggi(Array_punteggi *arr){
+    pthread_mutex_init(&arr->mutex_array, NULL);
+    
+    pthread_mutex_lock(&arr->mutex_array); 
+
+    arr->counter_punteggi = 0; 
+
+    pthread_mutex_unlock(&arr->mutex_array); 
 }
 
 void inizializza_server_data(Server_data *server_data){
@@ -159,7 +169,8 @@ void inizializza_server_data(Server_data *server_data){
     pthread_mutex_init(&server_data->mutex_server_data, NULL); 
     pthread_mutex_init(&server_data->mutex_tempo, NULL); 
 
-    inizializza_buffer_circolare(&server_data->buffer_punteggi);
+    //inizializza_buffer_circolare(&server_data->buffer_punteggi);
+    inizializza_array_punteggi(server_data->array_punteggi);
 
     pthread_cond_init(&server_data->cond_punteggi_pronti, NULL); 
     pthread_cond_init(&server_data->cond_classifica_pronta, NULL);
@@ -177,11 +188,15 @@ void inizializza_server_data(Server_data *server_data){
         perror("Nella creazione nodo trie");
         exit(EXIT_FAILURE); 
     }
+    server_data->classifica_pronta = 0; 
     server_data->classifica = (char *)malloc(MAX_BUFFER * sizeof(char)); 
     if(server_data->classifica == NULL){
         perror("Errore nella malloc");
         exit(EXIT_FAILURE); 
     }
+    server_data->counter_handler_punteggio = 0; 
+    server_data->handler_in_attesa = 0; 
+    server_data->punteggi_pronti = 0; 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
@@ -444,7 +459,7 @@ void to_uppercase(char *str){
     }
 }
 
-void produttore(Buffer_circolare *buff, int punti, char* username){
+/*void produttore(Buffer_circolare *buff, int punti, char* username){
 
     pthread_mutex_lock(&buff->mutex_buffer_c); 
 
@@ -480,6 +495,22 @@ Punti_fine consumatore(Buffer_circolare *buff){
    //pthread_mutex_unlock(&buff->mutex_buffer_c); 
 
     return punti_finali;
+}*/
+
+int inserisci_punteggio(Array_punteggi *arr, char* username, int score){
+    pthread_mutex_lock(&arr->mutex_array);
+
+    if(arr->counter_punteggi < MAX_CLIENT){
+        strncpy(arr->array[arr->counter_punteggi].nome, username, strlen(username)); 
+        arr->array[arr->counter_punteggi].nome[strlen(username)] = '\0'; 
+        arr->array[arr->counter_punteggi].punti = score; 
+        arr->counter_punteggi++;  
+        pthread_mutex_unlock(&arr->mutex_array); 
+        return 1;
+    }
+    else{
+        return 0; 
+    } 
 }
 
 //FUNZIONE DI CLEANUP
@@ -566,4 +597,10 @@ void rimuovi_parole(Client_t *client){
     }
 
     client->lista_parole = NULL; 
+}
+
+int ordina_punteggi(const void* a, const void* b){
+    const Punti_fine *p1 = (const Punti_fine*) a;
+    const Punti_fine *p2 = (const Punti_fine*) b;
+    return p2->punti - p1->punti; 
 }

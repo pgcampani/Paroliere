@@ -375,6 +375,11 @@
                     printf("Punti parola: %s\n", msg_server->data); 
                     pthread_cond_signal(&cond_client); 
                     break; 
+
+                case MSG_PUNTI_FINALI:
+                    printf("\nClassifica finale:\n%s\n", msg_server->data);
+                    printf("Digita un qualsiasi tasto per continuare\n");
+                    break;
                 
                 case MSG_SERVER_SHUTDONW:
 

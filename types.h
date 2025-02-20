@@ -17,7 +17,8 @@
 
 #define DIM_MATRIX 4
 #define MAX_BUFFER 1024
-#define MAX_CLIENT 32
+#define LINE_SIZE 128
+#define MAX_CLIENT 2
 #define USERNAME_LENGTH 11
 
 #include "trie.h"
@@ -45,7 +46,7 @@ typedef struct{
     int punti; 
 }Punti_fine; 
 
-typedef struct{
+/*typedef struct{
     Punti_fine buffer[MAX_CLIENT]; 
     int head; 
     int tail; 
@@ -53,7 +54,13 @@ typedef struct{
     pthread_mutex_t mutex_buffer_c; 
     pthread_cond_t buffer_not_full;
     pthread_cond_t buffer_not_empty; 
-}Buffer_circolare;
+}Buffer_circolare;*/
+
+typedef struct{
+    int counter_punteggi; 
+    Punti_fine array[MAX_CLIENT]; 
+    pthread_mutex_t mutex_array; 
+}Array_punteggi; 
 
 typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
@@ -62,6 +69,10 @@ typedef struct{
     char * data_filename; 
     FILE * matrix_file; 
     char * classifica; 
+    int classifica_pronta; 
+    int punteggi_pronti;
+    int counter_handler_punteggio; 
+    int handler_in_attesa; 
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
     pthread_cond_t cond_punteggi_pronti; 
@@ -73,7 +84,8 @@ typedef struct{
     int partita_in_corso;
     int timer;
     int terminazione_thread; 
-    Buffer_circolare buffer_punteggi;
+    //Buffer_circolare buffer_punteggi;
+    Array_punteggi array_punteggi[MAX_CLIENT]; 
 }Server_data; 
 
 typedef struct{
@@ -124,7 +136,7 @@ void *handler_punteggio(void*);
 
 void *gestione_tempo_partita(void*); 
 
-//void *scorer(void*);
+void *scorer(void*);
 
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
@@ -139,13 +151,17 @@ int dfs_rec(char [DIM_MATRIX][DIM_MATRIX], int, int, char *, int, int [DIM_MATRI
 
 int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
-//BufferCircolare
+//Array Punteggio
 
-void inizializza_buffer_circolare(Buffer_circolare*); 
+void inizializza_array_punteggi(Array_punteggi*); 
 
-void produttore(Buffer_circolare *, int, char*);
+//void produttore(Buffer_circolare *, int, char*);
 
-Punti_fine consumatore(Buffer_circolare*);
+//Punti_fine consumatore(Buffer_circolare*);
+
+int inserisci_punteggio(Array_punteggi*, char*, int); 
+
+int ordina_punteggi(const void*, const void*);
 
 //Gestione utente
 int cerca_giocatore(Server_data*, char*);
