@@ -194,8 +194,6 @@ void inizializza_server_data(Server_data *server_data){
         perror("Errore nella malloc");
         exit(EXIT_FAILURE); 
     }
-    server_data->counter_handler_punteggio = 0; 
-    server_data->handler_in_attesa = 0; 
     server_data->punteggi_pronti = 0; 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
@@ -245,6 +243,27 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
     printf("Socket utente non trovato\n"); 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
+}
+
+int login(Server_data* server_data, char *username, int client_fd){
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *curr = server_data->lista_giocatori; 
+
+    while(curr != NULL){
+        if(strcmp(curr->username, username) == 0){
+            curr->connesso = 1; 
+            curr->socket = client_fd; 
+            printf("%d,%s", curr->score, curr->username); 
+            pthread_mutex_unlock(&server_data->mutex_server_data); 
+            return 1; 
+        }
+        else{
+            curr = curr->next; 
+        }
+    }
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
+    return 0; 
 }
 
 void cancella_utente(Server_data* server_data, int socket){
@@ -459,44 +478,6 @@ void to_uppercase(char *str){
     }
 }
 
-/*void produttore(Buffer_circolare *buff, int punti, char* username){
-
-    pthread_mutex_lock(&buff->mutex_buffer_c); 
-
-    //Buffer pieno
-    while(buff->counter == MAX_CLIENT){
-        pthread_cond_wait(&buff->buffer_not_full, &buff->mutex_buffer_c);
-    }
-
-    strncpy(buff->buffer[buff->tail].nome, username, USERNAME_LENGTH - 1);
-    buff->buffer[buff->tail].punti = punti; 
-
-    buff->tail = (buff->tail + 1) & MAX_CLIENT;
-    buff->counter++; 
-
-    pthread_cond_signal(&buff->buffer_not_empty);
-    pthread_mutex_unlock(&buff->mutex_buffer_c); 
-}
-
-Punti_fine consumatore(Buffer_circolare *buff){
-
-    //pthread_mutex_lock(&buff->mutex_buffer_c);
-
-    //buffer vuoto
-    while(buff->counter == 0){
-        pthread_cond_wait(&buff->buffer_not_empty, &buff->mutex_buffer_c); 
-    }
-
-    Punti_fine punti_finali = buff->buffer[buff->head]; 
-    buff->head = (buff->head + 1) % MAX_CLIENT; 
-    buff->counter--; 
-
-    pthread_cond_signal(&buff->buffer_not_full);
-   //pthread_mutex_unlock(&buff->mutex_buffer_c); 
-
-    return punti_finali;
-}*/
-
 int inserisci_punteggio(Array_punteggi *arr, char* username, int score){
     pthread_mutex_lock(&arr->mutex_array);
 
@@ -522,11 +503,11 @@ void cleanup(Server_data *server_data){
         fclose(server_data->matrix_file); 
         server_data->matrix_file = NULL; 
     }
- 
 
     Giocatore *curr = server_data->lista_giocatori; 
 
     while(curr != NULL){
+
         Giocatore *rimuovi = curr; 
         curr = curr->next; 
         free(rimuovi); 
@@ -541,6 +522,8 @@ void cleanup(Server_data *server_data){
     pthread_mutex_destroy(&server_data->mutex_server_data);
 
     pthread_mutex_destroy(&server_data->mutex_tempo); 
+
+    pthread_mutex_destroy(&server_data->array_punteggi->mutex_array); 
 
     free(server_data); 
 }

@@ -69,6 +69,8 @@
 
             pthread_mutex_unlock(&global_server_data->mutex_server_data); 
 
+            shutdown(global_server_fd, SHUT_RDWR); 
+
             if(global_server_fd != -1){
                 close(global_server_fd); 
             }
@@ -331,15 +333,17 @@
             SYSC(retvalue, read(client_fd, &msg->length, sizeof(unsigned int)), "Nella read"); 
             //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
             if(retvalue == 0){
-                cancella_utente(server_data, client_fd); 
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
+                server_data->count_giocatori--; 
                 server_data->terminazione_thread = 1; 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
 
                 pthread_mutex_lock(&server_data->mutex_tempo);
                 pthread_cond_broadcast(&server_data->fine_partita); 
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                shutdown(client_fd, SHUT_RDWR); 
 
                 break; 
             }
@@ -352,7 +356,10 @@
                     free(msg);
                     decrement_active_threads(); 
                     pthread_exit(NULL); 
-                } 
+                }
+                else{
+                    pthread_mutex_unlock(&mutex_running); 
+                }
             }
 
             SYSC(retvalue, read(client_fd, &msg->type, sizeof(char)), "Nella read"); 
@@ -526,6 +533,48 @@
                     invia_messaggio(client_fd, risposta);
 
                     break;
+                
+                    case MSG_LOGIN_UTENTE: 
+                        int log = 0; 
+                        log = login(server_data, msg->data, client_fd); 
+                        if(log){
+
+                            risposta->type = MSG_OK;
+                            risposta->data = "Bentornato\n"; 
+                            risposta->length = strlen(risposta->data); 
+
+                            invia_messaggio(client_fd, risposta); 
+
+                            risposta->type = MSG_MATRICE; 
+                            pthread_mutex_lock(&server_data->mutex_server_data);
+                            risposta->data = paroliere_in_stringa(server_data->paroliere); 
+                            pthread_mutex_unlock(&server_data->mutex_server_data); 
+                            risposta->length = strlen(risposta->data); 
+                            invia_messaggio(client_fd, risposta); 
+                            free(risposta->data); 
+
+                            char stringa_tempo[MAX_BUFFER]; 
+                            pthread_mutex_lock(&server_data->mutex_tempo); 
+                            if(server_data->partita_in_corso){
+                                risposta->type = MSG_TEMPO_PARTITA;
+                                snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo fine partita %d\n", server_data->timer);
+                            }
+                            else{
+                                risposta->type = MSG_TEMPO_ATTESA;
+                                snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo a inizio partita %d\n", server_data->timer);  
+                            }
+                            risposta->data = stringa_tempo; 
+                            risposta->length = strlen(stringa_tempo); 
+                            pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                            invia_messaggio(client_fd, risposta);    
+                        }
+                        else{
+                            risposta->type = MSG_ERR; 
+                            risposta->data = "Errore login. L'utente non è registrato.\nPer registrarsi utilizzare comando registra_utente\n";
+                            risposta->length = strlen(risposta->data); 
+                        }
+                    break;
 
                 default: 
                     risposta->type = MSG_ERR; 
@@ -553,15 +602,6 @@
         
         while(1){
 
-            pthread_mutex_lock(&server_data->mutex_server_data);
-            if(server_data->terminazione_thread){
-                pthread_mutex_unlock(&server_data->mutex_server_data);
-                decrement_active_threads();
-                pthread_exit(NULL); 
-            }
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
-
-
             pthread_mutex_lock(&server_data->mutex_tempo); 
 
             while(server_data->partita_in_corso){
@@ -569,6 +609,7 @@
                 
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 if(server_data->terminazione_thread){
+                    server_data->terminazione_thread = 0; 
                     pthread_mutex_unlock(&server_data->mutex_server_data);
                     pthread_mutex_unlock(&server_data->mutex_tempo); 
                     decrement_active_threads();
@@ -606,21 +647,16 @@
 
                 if(punteggio_inserito){
                     pthread_mutex_lock(&server_data->mutex_server_data);
-                    server_data->counter_handler_punteggio++; 
-                    if(server_data->counter_handler_punteggio == server_data->count_giocatori){
+                    if(server_data->array_punteggi->counter_punteggi == server_data->count_giocatori){
                         server_data->punteggi_pronti = 1; 
-                        printf("Segnalo lo scorer\n"); 
                         pthread_cond_signal(&server_data->cond_punteggi_pronti);
                     }
 
                     while(!server_data->classifica_pronta){
-                        server_data->handler_in_attesa++;
-                        printf("HANDLER_PUNTEGGIO: Attendo classifica, %d\n", server_data->classifica_pronta);  
                         pthread_cond_wait(&server_data->cond_classifica_pronta, &server_data->mutex_server_data);
-                        printf("Ecco la classifica, la invio al client\n"); 
-                        server_data->handler_in_attesa--; 
 
                         if(server_data->terminazione_thread){
+                            server_data->terminazione_thread = 0;
                             pthread_mutex_unlock(&server_data->mutex_server_data);
                             decrement_active_threads();
                             pthread_exit(NULL); 
@@ -646,7 +682,6 @@
                     msg_punti->type = MSG_PUNTI_FINALI;
                     msg_punti->data = server_data->classifica;  
                     msg_punti->length = strlen(msg_punti->data);
-                    printf("Invio la classifica al client\n"); 
                     invia_messaggio(client_fd, msg_punti);  
                     free(msg_punti);
                     //pthread_cond_signal(&server_data->cond_classifica_pronta); 
@@ -661,12 +696,14 @@
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 if(server_data->terminazione_thread){
+                    server_data->terminazione_thread = 0; 
                     pthread_mutex_unlock(&server_data->mutex_server_data);
                     pthread_mutex_unlock(&server_data->mutex_tempo); 
                     decrement_active_threads();
                     pthread_exit(NULL);
                 }
                 pthread_mutex_unlock(&server_data->mutex_server_data); 
+\
 
                 pthread_mutex_lock(&mutex_running);
                 if(running == 0){
@@ -777,9 +814,7 @@ void *scorer(void* args){
         pthread_mutex_lock(&server_data->mutex_server_data);
 
         while(!server_data->punteggi_pronti){
-            printf("Attendo\n"); 
             pthread_cond_wait(&server_data->cond_punteggi_pronti, &server_data->mutex_server_data);
-            printf("Attesa finita\n"); 
 
             pthread_mutex_lock(&mutex_running);
             int should_exit = !running;
@@ -829,15 +864,11 @@ void *scorer(void* args){
         server_data->classifica[MAX_BUFFER - 1] = '\0';
 
         
-        printf("Sveglio i thread in attesa della classifica\n"); 
         server_data->classifica_pronta = 1;
 
         pthread_cond_broadcast(&server_data->cond_classifica_pronta);
-        printf("Svegliati\n"); 
 
         server_data->punteggi_pronti = 0; 
-
-        server_data->counter_handler_punteggio = 0; 
 
         Giocatore *curr = server_data->lista_giocatori; 
         while(curr != NULL){

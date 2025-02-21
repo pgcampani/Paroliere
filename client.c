@@ -81,9 +81,11 @@
             exit(EXIT_FAILURE); 
         }
 
+        pthread_mutex_lock(&mutex_client);
         client->registrato = 0; 
         client->socket_fd = socket_fd; 
         client->lista_parole = NULL; 
+        pthread_mutex_unlock(&mutex_client); 
  
         pthread_t risposta_handler;
 
@@ -106,7 +108,6 @@
         printf("- fine - per uscire dal gioco\n"); 
 
         while(1){
-
             pthread_mutex_lock(&mutex_running);
             if(exit_signal){
                 printf("Esco\n"); 
@@ -149,7 +150,9 @@
                 continue; 
             }
 
+            pthread_mutex_lock(&mutex_client);
             if(!client->registrato){
+                pthread_mutex_unlock(&mutex_client); 
                 //Se l'utente non è registrato  gli unici comandi validi sono: registra_utente, aiuto, fine
 
                 if(strcmp(comando, "registra_utente") == 0){
@@ -163,6 +166,21 @@
                         msg->length = strlen(argomento); 
                         invia_messaggio(socket_fd, msg);
                         pthread_cond_wait(&cond_client, &mutex_client); 
+                        pthread_mutex_unlock(&mutex_client); 
+                    }
+                }
+
+                else if(strcmp(comando, "login_utente") == 0){
+                    if(argomento == NULL){
+                        printf("Nessun username inserito. Usage: login_utente <nome_utente>\n"); 
+                    }
+                    else{
+                        pthread_mutex_lock(&mutex_client);
+                        msg->type = MSG_LOGIN_UTENTE; 
+                        msg->data = argomento; 
+                        msg->length = strlen(argomento); 
+                        invia_messaggio(socket_fd, msg); 
+                        pthread_cond_wait(&cond_client, &mutex_client);
                         pthread_mutex_unlock(&mutex_client); 
                     }
                 }
@@ -198,6 +216,8 @@
                 }
             }
             else{
+                pthread_mutex_unlock(&mutex_client); 
+
                 if(strcmp(comando, "registra_utente") == 0){
                     if(argomento == NULL){
                         printf("Comando non valido. Forse cercavi: registra_utente\n"); 
@@ -378,7 +398,8 @@
 
                 case MSG_PUNTI_FINALI:
                     printf("\nClassifica finale:\n%s\n", msg_server->data);
-                    printf("Digita un qualsiasi tasto per continuare\n");
+                    rimuovi_parole(client); 
+                    printf("Digita un comando qualsiasi per continuare\n");
                     break;
                 
                 case MSG_SERVER_SHUTDONW:

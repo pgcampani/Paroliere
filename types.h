@@ -14,6 +14,7 @@
 #define MSG_SERVER_SHUTDONW 'B'
 #define MSG_POST_BACHECA 'H'
 #define MSG_SHOW_BACHECA 'S'
+#define MSG_LOGIN_UTENTE 'L'
 
 #define DIM_MATRIX 4
 #define MAX_BUFFER 1024
@@ -46,16 +47,6 @@ typedef struct{
     int punti; 
 }Punti_fine; 
 
-/*typedef struct{
-    Punti_fine buffer[MAX_CLIENT]; 
-    int head; 
-    int tail; 
-    int counter; 
-    pthread_mutex_t mutex_buffer_c; 
-    pthread_cond_t buffer_not_full;
-    pthread_cond_t buffer_not_empty; 
-}Buffer_circolare;*/
-
 typedef struct{
     int counter_punteggi; 
     Punti_fine array[MAX_CLIENT]; 
@@ -71,8 +62,6 @@ typedef struct{
     char * classifica; 
     int classifica_pronta; 
     int punteggi_pronti;
-    int counter_handler_punteggio; 
-    int handler_in_attesa; 
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
     pthread_cond_t cond_punteggi_pronti; 
@@ -84,7 +73,6 @@ typedef struct{
     int partita_in_corso;
     int timer;
     int terminazione_thread; 
-    //Buffer_circolare buffer_punteggi;
     Array_punteggi array_punteggi[MAX_CLIENT]; 
 }Server_data; 
 
@@ -167,6 +155,8 @@ int ordina_punteggi(const void*, const void*);
 int cerca_giocatore(Server_data*, char*);
 
 Giocatore * restituisci_giocatore(Server_data*, int); 
+
+int login(Server_data*, char*, int); 
 
 void cancella_utente(Server_data*, int); 
 
