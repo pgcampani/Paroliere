@@ -158,6 +158,8 @@ Giocatore * restituisci_giocatore(Server_data*, int);
 
 int login(Server_data*, char*, int); 
 
+void logout_utente(Server_data*, int); 
+
 void cancella_utente(Server_data*, int); 
 
 //MESSAGGI

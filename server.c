@@ -69,8 +69,6 @@
 
             pthread_mutex_unlock(&global_server_data->mutex_server_data); 
 
-            shutdown(global_server_fd, SHUT_RDWR); 
-
             if(global_server_fd != -1){
                 close(global_server_fd); 
             }
@@ -80,8 +78,12 @@
             Giocatore *curr = global_server_data->lista_giocatori; 
 
             while(curr != NULL){
+                
+                printf("%s,%d,%d\n", curr->username, curr->socket, curr->connesso); 
 
-                invia_messaggio(curr->socket, &msg);
+                if(curr->connesso == 1){
+                    invia_messaggio(curr->socket, &msg);
+                }
 
                 if(close(curr->socket) == -1){
                     perror("Errore in chiusura socket"); 
@@ -272,7 +274,7 @@
         Server_data *server_data = client_args->server_data;
         int retvalue; 
         
-        inserisci_giocatore(server_data, client_fd); 
+        //inserisci_giocatore(server_data, client_fd); 
     
         SYSC(retvalue, pthread_create(&client_args->messaggi_tid, NULL, handler_messaggi, (void*)client_args), "Nella pthread_create");
         increment_active_threads(); 
@@ -333,6 +335,8 @@
             SYSC(retvalue, read(client_fd, &msg->length, sizeof(unsigned int)), "Nella read"); 
             //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
             if(retvalue == 0){
+
+                logout_utente(server_data, client_fd); 
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 server_data->count_giocatori--; 
