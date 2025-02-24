@@ -19,7 +19,7 @@
 #define DIM_MATRIX 4
 #define MAX_BUFFER 1024
 #define LINE_SIZE 128
-#define MAX_CLIENT 2
+#define MAX_CLIENT 4
 #define USERNAME_LENGTH 11
 
 #include "trie.h"
@@ -148,6 +148,8 @@ void inizializza_array_punteggi(Array_punteggi*);
 //Punti_fine consumatore(Buffer_circolare*);
 
 int inserisci_punteggio(Array_punteggi*, char*, int); 
+
+void reset_punteggi(Server_data*); 
 
 int ordina_punteggi(const void*, const void*);
 

@@ -202,26 +202,15 @@ void inserisci_giocatore(Server_data* server_data, int socket){
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
-    Giocatore *curr = server_data->lista_giocatori; 
-
-    while(curr != NULL){
-        if(curr->socket == socket && curr->username[0] != '\0'){
-            printf("Esiste già\n"); 
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
-            return; 
-        }
-        curr = curr->next; 
-    }
-
     Giocatore *nuovo_giocatore = (Giocatore*)malloc(sizeof(Giocatore));
     if(nuovo_giocatore == NULL){
         perror("Errore nella malloc"); 
+        pthread_mutex_unlock(&server_data->mutex_server_data); 
         return;
     }
 
     nuovo_giocatore->socket = socket;
-    printf("nuovo_giocatore->socket%d socket_client%d\n", nuovo_giocatore->socket, socket);  
-    *(nuovo_giocatore->username) = '\0'; 
+    nuovo_giocatore->username[0] = '\0'; 
     nuovo_giocatore->connesso = 1; 
     nuovo_giocatore->in_gioco = 0; 
     nuovo_giocatore->score = 0; 
@@ -236,29 +225,28 @@ void inserisci_giocatore(Server_data* server_data, int socket){
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
-/*void registra_giocatore(Server_data *server_data, int socket, char *username){
+void registra_giocatore(Server_data *server_data, int socket, char *username){
     
     pthread_mutex_lock(&server_data->mutex_server_data);
 
     Giocatore *temp = server_data->lista_giocatori;
 
     while(temp != NULL){
-        printf("temp->socket%d, socket%d\n", temp->socket, socket); 
         if(temp->socket == socket){
-            strncpy(temp->username, username, USERNAME_LENGTH); 
-            temp->username[USERNAME_LENGTH] = '\0'; 
+            strncpy(temp->username, username, USERNAME_LENGTH - 1); 
+            temp->username[USERNAME_LENGTH - 1] = '\0'; 
             pthread_mutex_unlock(&server_data->mutex_server_data);  
             return;
         }
+        temp = temp->next; 
     }
 
     printf("Socket utente non trovato\n"); 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
-    return; 
-}*/
+}
 
-void registra_giocatore(Server_data *server_data, int socket, char* username){
+/*void registra_giocatore(Server_data *server_data, int socket, char* username){
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
@@ -293,25 +281,59 @@ void registra_giocatore(Server_data *server_data, int socket, char* username){
     server_data->count_giocatori++; 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
-}
+}*/
 
 int login(Server_data* server_data, char *username, int client_fd){
+
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
     Giocatore *curr = server_data->lista_giocatori; 
+    Giocatore *prec = NULL; 
+    Giocatore *esistente = NULL; 
 
     while(curr != NULL){
         if(strcmp(curr->username, username) == 0){
-            curr->connesso = 1; 
-            curr->socket = client_fd; 
-            printf("%d,%s,%d\n", curr->score, curr->username, curr->socket); 
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
-            return 1; 
+
+            if(curr->connesso == 1){
+                //Utente già connesso, impossibile fare la login
+                pthread_mutex_unlock(&server_data->mutex_server_data);
+                return 0; 
+            }
+            else{
+                esistente = curr; //Trovato utente registrato con quell'username
+            }
         }
-        else{
-            curr = curr->next; 
+        if(curr->socket == client_fd && curr->username[0] == '\0'){
+            prec = curr;  //Trovato nodo creato alla connessione con username non registrato
         }
+        curr = curr->next; 
     }
+
+    if(esistente != NULL){
+        esistente->socket = client_fd;
+        esistente->connesso = 1; 
+        //Se esiste un nodo temporaneo lo rimuoviamo
+        if(prec != NULL){
+            if(server_data->lista_giocatori == prec){
+                server_data->lista_giocatori = prec->next; 
+            }
+            else{
+                Giocatore *temp = server_data->lista_giocatori;
+                while(temp != NULL && temp->next != prec){
+                    temp = temp->next;
+                }
+                if(temp != NULL){
+                    temp->next = prec->next; 
+                }
+            }
+            server_data->count_giocatori--;
+            free(prec); 
+        }
+ 
+        pthread_mutex_unlock(&server_data->mutex_server_data);
+        return 1; 
+    }
+
     pthread_mutex_unlock(&server_data->mutex_server_data); 
     return 0; 
 }
@@ -319,18 +341,33 @@ int login(Server_data* server_data, char *username, int client_fd){
 void logout_utente(Server_data *server_data, int socket){
     pthread_mutex_lock(&server_data->mutex_server_data); 
 
-    Giocatore *curr = server_data->lista_giocatori; 
+    Giocatore *curr = server_data->lista_giocatori;
+    Giocatore *prev = NULL;  
 
     while(curr != NULL){
         if(curr->socket == socket){
-            curr->connesso = 0; 
+            if(curr->username[0] == '\0'){
+                if(prev == NULL){
+                    server_data->lista_giocatori = curr->next; 
+                }
+                else{
+                    prev->next = curr->next;
+                }
+                free(curr); 
+            }
+            else{
+                curr->score = 0; 
+                curr->connesso = 0; 
+                curr->socket = -1; 
+            }
+            close(socket); 
             pthread_mutex_unlock(&server_data->mutex_server_data);
             return; 
         }
+        prev = curr; 
         curr = curr->next; 
     }
     pthread_mutex_unlock(&server_data->mutex_server_data); 
-    return; 
 }
 
 void cancella_utente(Server_data* server_data, int socket){
@@ -559,6 +596,19 @@ int inserisci_punteggio(Array_punteggi *arr, char* username, int score){
     else{
         return 0; 
     } 
+}
+
+void reset_punteggi(Server_data *server_data){
+
+    pthread_mutex_lock(&server_data->mutex_server_data); 
+
+    Giocatore *curr = server_data->lista_giocatori; 
+        while(curr != NULL){
+            curr->score = 0; 
+            curr = curr->next;
+        }
+
+    pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
 //FUNZIONE DI CLEANUP

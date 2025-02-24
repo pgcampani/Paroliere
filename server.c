@@ -85,9 +85,11 @@
                     invia_messaggio(curr->socket, &msg);
                 }
 
-                if(close(curr->socket) == -1){
-                    perror("Errore in chiusura socket"); 
-                } 
+                if(curr->socket != -1){
+                    if(close(curr->socket) == -1){
+                        perror("Errore in chiusura socket"); 
+                    } 
+                }
 
                 curr = curr->next;
             }
@@ -274,7 +276,7 @@
         Server_data *server_data = client_args->server_data;
         int retvalue; 
         
-        //inserisci_giocatore(server_data, client_fd); 
+        inserisci_giocatore(server_data, client_fd); 
     
         SYSC(retvalue, pthread_create(&client_args->messaggi_tid, NULL, handler_messaggi, (void*)client_args), "Nella pthread_create");
         increment_active_threads(); 
@@ -339,16 +341,13 @@
                 logout_utente(server_data, client_fd); 
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
-                server_data->count_giocatori--; 
+                //server_data->count_giocatori--; 
                 server_data->terminazione_thread = 1; 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
 
                 pthread_mutex_lock(&server_data->mutex_tempo);
                 pthread_cond_broadcast(&server_data->fine_partita); 
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
-
-                shutdown(client_fd, SHUT_RDWR); 
-
                 break; 
             }
             else if(retvalue == -1){
@@ -577,6 +576,8 @@
                             risposta->type = MSG_ERR; 
                             risposta->data = "Errore login. L'utente non è registrato.\nPer registrarsi utilizzare comando registra_utente\n";
                             risposta->length = strlen(risposta->data); 
+
+                            invia_messaggio(client_fd, risposta); 
                         }
                     break;
 
@@ -643,20 +644,26 @@
             pthread_mutex_unlock(&mutex_running);
 
             Giocatore *giocatore = restituisci_giocatore(server_data, client_fd); 
+            printf("zio bricco\n"); 
             if(giocatore != NULL){
                 int punteggio_inserito = 0; 
                 if(giocatore->score > 0){
+                printf("patate a forno\n"); 
                     punteggio_inserito = inserisci_punteggio(server_data->array_punteggi, giocatore->username, giocatore->score); 
                 }       
 
                 if(punteggio_inserito){
+                    printf("Prendo ketchup\n"); 
                     pthread_mutex_lock(&server_data->mutex_server_data);
+                    printf("array_counter:%d counter_player:%d\n", server_data->array_punteggi->counter_punteggi, server_data->count_giocatori); 
                     if(server_data->array_punteggi->counter_punteggi == server_data->count_giocatori){
                         server_data->punteggi_pronti = 1; 
+                        printf("Sveglio il cane\n"); 
                         pthread_cond_signal(&server_data->cond_punteggi_pronti);
                     }
 
                     while(!server_data->classifica_pronta){
+                        printf("Attendo la spesa\n"); 
                         pthread_cond_wait(&server_data->cond_classifica_pronta, &server_data->mutex_server_data);
 
                         if(server_data->terminazione_thread){
@@ -688,14 +695,12 @@
                     msg_punti->length = strlen(msg_punti->data);
                     invia_messaggio(client_fd, msg_punti);  
                     free(msg_punti);
-                    //pthread_cond_signal(&server_data->cond_classifica_pronta); 
-                    server_data->classifica_pronta = 0; 
                     pthread_mutex_unlock(&server_data->mutex_server_data);
                 }
             }
-
             pthread_mutex_lock(&server_data->mutex_tempo);
             while(!server_data->partita_in_corso){
+                printf("Attendo inizio partita\n");
                 pthread_cond_wait(&server_data->inizio_partita, &server_data->mutex_tempo);
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
@@ -707,7 +712,6 @@
                     pthread_exit(NULL);
                 }
                 pthread_mutex_unlock(&server_data->mutex_server_data); 
-\
 
                 pthread_mutex_lock(&mutex_running);
                 if(running == 0){
@@ -763,6 +767,7 @@
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
                 genera_matrice(server_data);
                 pthread_mutex_lock(&server_data->mutex_server_data);
+                server_data->classifica_pronta = 0; 
                 stampa_matrice(server_data->paroliere); 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
             }
@@ -869,17 +874,14 @@ void *scorer(void* args){
 
         
         server_data->classifica_pronta = 1;
-
+        printf("\nCLASSIFICA: %s\n", csv); 
         pthread_cond_broadcast(&server_data->cond_classifica_pronta);
 
         server_data->punteggi_pronti = 0; 
 
-        Giocatore *curr = server_data->lista_giocatori; 
-        while(curr != NULL){
-            curr->score = 0; 
-            curr = curr->next;
-        }
         pthread_mutex_unlock(&server_data->mutex_server_data);
+
+        reset_punteggi(server_data); 
 
         pthread_mutex_lock(&server_data->array_punteggi->mutex_array); 
         for(int i = 0; i < MAX_CLIENT; i++){
