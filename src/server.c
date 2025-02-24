@@ -644,26 +644,22 @@
             pthread_mutex_unlock(&mutex_running);
 
             Giocatore *giocatore = restituisci_giocatore(server_data, client_fd); 
-            printf("zio bricco\n"); 
             if(giocatore != NULL){
                 int punteggio_inserito = 0; 
                 if(giocatore->score > 0){
-                printf("patate a forno\n"); 
                     punteggio_inserito = inserisci_punteggio(server_data->array_punteggi, giocatore->username, giocatore->score); 
                 }       
 
                 if(punteggio_inserito){
-                    printf("Prendo ketchup\n"); 
+                    printf("score: %d\n", giocatore->score); 
                     pthread_mutex_lock(&server_data->mutex_server_data);
-                    printf("array_counter:%d counter_player:%d\n", server_data->array_punteggi->counter_punteggi, server_data->count_giocatori); 
+                    printf("array%d counter%d\n", server_data->array_punteggi->counter_punteggi, server_data->count_giocatori); 
                     if(server_data->array_punteggi->counter_punteggi == server_data->count_giocatori){
                         server_data->punteggi_pronti = 1; 
-                        printf("Sveglio il cane\n"); 
                         pthread_cond_signal(&server_data->cond_punteggi_pronti);
                     }
 
                     while(!server_data->classifica_pronta){
-                        printf("Attendo la spesa\n"); 
                         pthread_cond_wait(&server_data->cond_classifica_pronta, &server_data->mutex_server_data);
 
                         if(server_data->terminazione_thread){
@@ -700,7 +696,6 @@
             }
             pthread_mutex_lock(&server_data->mutex_tempo);
             while(!server_data->partita_in_corso){
-                printf("Attendo inizio partita\n");
                 pthread_cond_wait(&server_data->inizio_partita, &server_data->mutex_tempo);
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
