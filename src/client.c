@@ -85,6 +85,7 @@
         client->registrato = 0; 
         client->socket_fd = socket_fd; 
         client->lista_parole = NULL; 
+        client->termina = 0; 
         pthread_mutex_unlock(&mutex_client); 
  
         pthread_t risposta_handler;
@@ -320,6 +321,26 @@
                     }
                 }
 
+                else if(strcmp(comando, "cancella_registrazione") == 0){
+                    if(argomento == NULL){
+                        printf("Comando non valido. Inserire giocatore da cancellare\n"); 
+                    }
+                    else{
+                        msg->type = MSG_CANCELLA_UTENTE; 
+                        msg->data = argomento;
+                        msg->length = strlen(msg->data); 
+
+                        invia_messaggio(socket_fd, msg); 
+
+                        pthread_mutex_lock(&mutex_client);
+                        pthread_cond_wait(&cond_client, &mutex_client);
+                        pthread_mutex_unlock(&mutex_client); 
+                        if(client->termina){
+                            break; 
+                        }
+                    }
+                }
+
                 else if(strcmp(comando, "fine") == 0){
                     if(argomento != NULL){
                         printf("Comando non valido. Forse cercavi: fine\n");
@@ -329,8 +350,7 @@
                     }
                 }
             }
-        }
-
+        }   
         close(client->socket_fd); 
         pthread_cancel(risposta_handler); 
         pthread_join(risposta_handler, NULL);
@@ -404,7 +424,6 @@
                         client->registrato = 1; 
                     }
                     else{
-                        printf("ARRIVATO ok\n"); 
                         pthread_cond_signal(&cond_client); 
                         break; 
                     }
@@ -450,6 +469,18 @@
                     printf("%s", msg_server->data);
                     printf("*****************\n"); 
                     pthread_cond_signal(&cond_client); 
+                    break; 
+                
+                case MSG_CANCELLA_UTENTE: 
+                    printf("Chiudo\n"); 
+                    client->termina = 1; 
+                    pthread_cond_signal(&cond_client);
+                    pthread_mutex_unlock(&mutex_client);
+
+                    free(msg_server->data);
+                    free(msg_server);
+                    close(socket_fd); 
+                    pthread_exit(NULL); 
                     break; 
 
                 case MSG_SERVER_SHUTDONW:

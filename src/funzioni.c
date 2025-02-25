@@ -362,9 +362,8 @@ void cancella_utente(Server_data* server_data, int socket){
         prev->next = temp->next; 
     }
 
+    server_data->utenti_attivi--; 
     server_data->count_giocatori--; 
-
-    close(temp->socket);
 
     free(temp); 
 

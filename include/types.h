@@ -15,6 +15,7 @@
 #define MSG_POST_BACHECA 'H'
 #define MSG_SHOW_BACHECA 'S'
 #define MSG_LOGIN_UTENTE 'L'
+#define MSG_CANCELLA_UTENTE 'D'
 
 #define DIM_MATRIX 4
 #define LINE_SIZE 128
@@ -110,6 +111,7 @@ typedef struct{
     int registrato; 
     int socket_fd; 
     char paroliere_client[DIM_MATRIX][DIM_MATRIX]; 
+    int termina; 
     Parola *lista_parole; 
 }Client_t; 
 

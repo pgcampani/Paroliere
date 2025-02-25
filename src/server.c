@@ -297,7 +297,9 @@
 
         int client_fd = client_args->client_fd;
         Server_data *server_data = client_args->server_data;
-        int retvalue; 
+        int retvalue;
+        
+        Giocatore *giocatore = restituisci_giocatore(server_data, client_fd);
 
         Messaggio *msg, *risposta; 
 
@@ -341,7 +343,6 @@
                 logout_utente(server_data, client_fd); 
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
-                //server_data->count_giocatori--; 
                 server_data->terminazione_thread = 1; 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
 
@@ -402,7 +403,7 @@
 
                     pthread_mutex_lock(&server_data->mutex_server_data); 
 
-                    if(server_data->count_giocatori > MAX_CLIENT){  
+                    if(server_data->count_giocatori > MAX_CLIENT){ 
                         risposta->type = MSG_ERR; 
                         risposta->data = "Numero massimo giocatori raggiunto. Riprova più tardi";
                         risposta->length = strlen(risposta->data); 
@@ -583,8 +584,6 @@
                 
                 case MSG_POST_BACHECA:
 
-                    Giocatore *giocatore = restituisci_giocatore(server_data, client_fd);
-
                     int retvalue = post_bacheca(&server_data->bacheca, giocatore->username, msg->data);
 
                     if(retvalue){
@@ -599,6 +598,7 @@
                     }
                     
                     invia_messaggio(client_fd, risposta); 
+
                     break;
                 
                 case MSG_SHOW_BACHECA:
@@ -613,7 +613,36 @@
 
                     invia_messaggio(client_fd, risposta);                     
                     break;
+                
+                case MSG_CANCELLA_UTENTE:
+                    
+                    if(strcmp(giocatore->username, msg->data) == 0){
 
+                        cancella_utente(server_data, client_fd); 
+
+                        risposta->type = MSG_CANCELLA_UTENTE;
+                        risposta->data = NULL; 
+                        risposta->length = 0; 
+    
+                        invia_messaggio(client_fd, risposta); 
+    
+                        pthread_mutex_lock(&server_data->mutex_server_data);
+                        server_data->terminazione_thread = 1; 
+                        pthread_mutex_unlock(&server_data->mutex_server_data);
+        
+                        pthread_mutex_lock(&server_data->mutex_tempo);
+                        pthread_cond_broadcast(&server_data->fine_partita); 
+                        pthread_mutex_unlock(&server_data->mutex_tempo);
+                    }
+                    else{
+                        risposta->type = MSG_ERR;
+                        risposta->data = "Impossibile cancellare un altro giocatore";
+                        risposta->length = strlen(risposta->data); 
+
+                        invia_messaggio(client_fd, risposta); 
+                    } 
+                    break; 
+                    
 
                 default: 
                     risposta->type = MSG_ERR; 
@@ -627,7 +656,6 @@
             free(msg); 
             msg = NULL;
         }
-        
         free(risposta); 
         decrement_active_threads(); 
         pthread_exit(NULL);
