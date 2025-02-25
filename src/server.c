@@ -79,7 +79,7 @@
 
             while(curr != NULL){
                 
-                printf("%s,%d,%d\n", curr->username, curr->socket, curr->connesso); 
+                printf("%s,%d,%d, punti%d\n", curr->username, curr->socket, curr->connesso, curr->score); 
 
                 if(curr->connesso == 1){
                     invia_messaggio(curr->socket, &msg);
@@ -537,49 +537,83 @@
 
                     break;
                 
-                    case MSG_LOGIN_UTENTE: 
-                        int log = 0; 
-                        log = login(server_data, msg->data, client_fd); 
-                        if(log){
+                case MSG_LOGIN_UTENTE: 
+                    int log = 0; 
+                    log = login(server_data, msg->data, client_fd); 
+                    if(log){
 
-                            risposta->type = MSG_OK;
-                            risposta->data = "Bentornato\n"; 
-                            risposta->length = strlen(risposta->data); 
+                        risposta->type = MSG_OK;
+                        risposta->data = "Bentornato\n"; 
+                        risposta->length = strlen(risposta->data); 
 
-                            invia_messaggio(client_fd, risposta); 
+                        invia_messaggio(client_fd, risposta); 
 
-                            risposta->type = MSG_MATRICE; 
-                            pthread_mutex_lock(&server_data->mutex_server_data);
-                            risposta->data = paroliere_in_stringa(server_data->paroliere); 
-                            pthread_mutex_unlock(&server_data->mutex_server_data); 
-                            risposta->length = strlen(risposta->data); 
-                            invia_messaggio(client_fd, risposta); 
-                            free(risposta->data); 
+                        risposta->type = MSG_MATRICE; 
+                        pthread_mutex_lock(&server_data->mutex_server_data);
+                        risposta->data = paroliere_in_stringa(server_data->paroliere); 
+                        pthread_mutex_unlock(&server_data->mutex_server_data); 
+                        risposta->length = strlen(risposta->data); 
+                        invia_messaggio(client_fd, risposta); 
+                        free(risposta->data); 
 
-                            char stringa_tempo[MAX_BUFFER]; 
-                            pthread_mutex_lock(&server_data->mutex_tempo); 
-                            if(server_data->partita_in_corso){
-                                risposta->type = MSG_TEMPO_PARTITA;
-                                snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo fine partita %d\n", server_data->timer);
-                            }
-                            else{
-                                risposta->type = MSG_TEMPO_ATTESA;
-                                snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo a inizio partita %d\n", server_data->timer);  
-                            }
-                            risposta->data = stringa_tempo; 
-                            risposta->length = strlen(stringa_tempo); 
-                            pthread_mutex_unlock(&server_data->mutex_tempo); 
-
-                            invia_messaggio(client_fd, risposta);    
+                        char stringa_tempo[MAX_BUFFER]; 
+                        pthread_mutex_lock(&server_data->mutex_tempo); 
+                        if(server_data->partita_in_corso){
+                            risposta->type = MSG_TEMPO_PARTITA;
+                            snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo fine partita %d\n", server_data->timer);
                         }
                         else{
-                            risposta->type = MSG_ERR; 
-                            risposta->data = "Errore login. L'utente non è registrato.\nPer registrarsi utilizzare comando registra_utente\n";
-                            risposta->length = strlen(risposta->data); 
-
-                            invia_messaggio(client_fd, risposta); 
+                            risposta->type = MSG_TEMPO_ATTESA;
+                            snprintf(stringa_tempo, sizeof(stringa_tempo), "Tempo a inizio partita %d\n", server_data->timer);  
                         }
+                        risposta->data = stringa_tempo; 
+                        risposta->length = strlen(stringa_tempo); 
+                        pthread_mutex_unlock(&server_data->mutex_tempo); 
+
+                        invia_messaggio(client_fd, risposta);    
+                    }
+                    else{
+                        risposta->type = MSG_ERR; 
+                        risposta->data = "Errore login. L'utente non è registrato.\nPer registrarsi utilizzare comando registra_utente\n";
+                        risposta->length = strlen(risposta->data); 
+
+                        invia_messaggio(client_fd, risposta); 
+                    }
                     break;
+                
+                case MSG_POST_BACHECA:
+
+                    Giocatore *giocatore = restituisci_giocatore(server_data, client_fd);
+
+                    int retvalue = post_bacheca(&server_data->bacheca, giocatore->username, msg->data);
+
+                    if(retvalue){
+                        risposta->type = MSG_OK;
+                        risposta->data = "Messaggio postato con successo\n";
+                        risposta->length = strlen(msg->data); 
+                    }
+                    else{
+                        risposta->type = MSG_ERR;
+                        risposta->data = "Errore nel postare il messaggio sulla bacheca\n";
+                        risposta->length = strlen(msg->data); 
+                    }
+                    
+                    invia_messaggio(client_fd, risposta); 
+                    break;
+                
+                case MSG_SHOW_BACHECA:
+
+                    char output[MAX_BUFFER];
+                    
+                    show_bacheca(&server_data->bacheca, output, sizeof(output));
+
+                    risposta->type = MSG_SHOW_BACHECA; 
+                    risposta->data = output; 
+                    risposta->length = strlen(risposta->data); 
+
+                    invia_messaggio(client_fd, risposta);                     
+                    break;
+
 
                 default: 
                     risposta->type = MSG_ERR; 
@@ -647,14 +681,15 @@
             if(giocatore != NULL){
                 int punteggio_inserito = 0; 
                 if(giocatore->score > 0){
+                    printf("Inserito\n"); 
                     punteggio_inserito = inserisci_punteggio(server_data->array_punteggi, giocatore->username, giocatore->score); 
                 }       
 
                 if(punteggio_inserito){
                     printf("score: %d\n", giocatore->score); 
                     pthread_mutex_lock(&server_data->mutex_server_data);
-                    printf("array%d counter%d\n", server_data->array_punteggi->counter_punteggi, server_data->count_giocatori); 
-                    if(server_data->array_punteggi->counter_punteggi == server_data->count_giocatori){
+                    printf("array%d counter%d\n", server_data->array_punteggi->counter_punteggi, server_data->utenti_attivi); 
+                    if(server_data->array_punteggi->counter_punteggi == server_data->utenti_attivi){
                         server_data->punteggi_pronti = 1; 
                         pthread_cond_signal(&server_data->cond_punteggi_pronti);
                     }

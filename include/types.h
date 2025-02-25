@@ -17,10 +17,13 @@
 #define MSG_LOGIN_UTENTE 'L'
 
 #define DIM_MATRIX 4
-#define MAX_BUFFER 1024
 #define LINE_SIZE 128
 #define MAX_CLIENT 4
 #define USERNAME_LENGTH 11
+#define MAX_MESSAGES 8
+#define MAX_MSG_LEN 128
+#define MAX_BUFFER 1024
+
 
 #include "trie.h"
 
@@ -54,9 +57,23 @@ typedef struct{
 }Array_punteggi; 
 
 typedef struct{
+    char username[USERNAME_LENGTH]; 
+    char post[MAX_MSG_LEN + 1]; 
+}Post_bacheca; 
+
+typedef struct{
+    Post_bacheca post_bacheca[MAX_MESSAGES];
+    int head;
+    int tail; 
+    int count;
+    pthread_mutex_t mutex_bacheca; 
+}Bacheca; 
+
+typedef struct{
     char paroliere[DIM_MATRIX][DIM_MATRIX]; 
     Giocatore *lista_giocatori; 
-    int count_giocatori; 
+    int count_giocatori;
+    int utenti_attivi;  
     char * data_filename; 
     FILE * matrix_file; 
     char * classifica; 
@@ -74,6 +91,7 @@ typedef struct{
     int timer;
     int terminazione_thread; 
     Array_punteggi array_punteggi[MAX_CLIENT]; 
+    Bacheca bacheca; 
 }Server_data; 
 
 typedef struct{
@@ -143,10 +161,6 @@ int parola_presente(char [DIM_MATRIX][DIM_MATRIX], char*);
 
 void inizializza_array_punteggi(Array_punteggi*); 
 
-//void produttore(Buffer_circolare *, int, char*);
-
-//Punti_fine consumatore(Buffer_circolare*);
-
 int inserisci_punteggio(Array_punteggi*, char*, int); 
 
 void reset_punteggi(Server_data*); 
@@ -163,6 +177,13 @@ int login(Server_data*, char*, int);
 void logout_utente(Server_data*, int); 
 
 void cancella_utente(Server_data*, int); 
+
+//BACHECA
+void inizializza_bacheca(Bacheca*);
+
+int post_bacheca(Bacheca*, char*, char*);
+
+void show_bacheca(Bacheca*, char*, size_t); 
 
 //MESSAGGI
 Messaggio * leggi_messaggio(int); 

@@ -103,7 +103,8 @@
 
         printf("COMANDI:\n");
         printf("- registra_utente nome_utente - per registrarsi\n");
-        printf("- matrice - per richiedere la matrice del gioco in corso\n");
+        printf("- login_utente nome utente - per connettersi con uno username già registrato\n"); 
+        printf("- matrice - per richiedere il paroliere ed il tempo rimanente alla fine del gioco/pausa\n");
         printf("- parola p - per inviare una parola trovata nel paroliere\n"); 
         printf("- fine - per uscire dal gioco\n"); 
 
@@ -192,7 +193,8 @@
                     else{
                         printf("COMANDI:\n");
                         printf("- registra_utente nome_utente\n");
-                        printf("- matrice - per richiedere la matrice del gioco in corso\n");
+                        printf("- login_utente nome utente - per connettersi con uno username già registrato\n"); 
+                        printf("- matrice - per richiedere il paroliere ed il tempo rimanente alla fine del gioco/pausa\n");
                         printf("- parola p - per inviare una parola nel paroliere\n");
                         printf("- fine - per uscire dal gioco\n"); 
                     }
@@ -234,7 +236,8 @@
                     else{
                         printf("COMANDI:\n");
                         printf("- registra_utente nome_utente\n");
-                        printf("- matrice - per richiedere la matrice del gioco in corso\n");
+                        printf("- login_utente nome utente - per connettersi con uno username già registrato\n"); 
+                        printf("- matrice - per richiedere il paroliere ed il tempo rimanente alla fine del gioco/pausa\n");
                         printf("- parola p - per inviare una parola nel paroliere\n");
                         printf("- fine - per uscire dal gioco\n"); 
                     }
@@ -282,6 +285,41 @@
                     }
                 }
 
+                else if(strcmp(comando, "msg") == 0){
+                    if(argomento == NULL){
+                        printf("Comando non valido. Inserire un messaggio da postare sulla bacheca\n"); 
+                    }
+                    else{
+                        msg->type = MSG_POST_BACHECA;
+                        msg->data = argomento;
+                        msg->length = strlen(msg->data);
+                        
+                        invia_messaggio(socket_fd, msg);
+                        pthread_mutex_lock(&mutex_client);
+                        printf("Attendo risposta da server\n"); 
+                        pthread_cond_wait(&cond_client, &mutex_client);
+                        printf("Svegliato\n"); 
+                        pthread_mutex_unlock(&mutex_client); 
+                    }
+                }
+
+                else if(strcmp(comando, "show_msg") == 0){
+                    if(argomento != NULL){
+                        printf("Comando non valido. Forse cercavi: show_msg\n");
+                    }
+                    else{
+                        msg->type = MSG_SHOW_BACHECA;
+                        msg->data = NULL; 
+                        msg->length = 0; 
+
+                        invia_messaggio(socket_fd, msg); 
+
+                        pthread_mutex_lock(&mutex_client); 
+                        pthread_cond_wait(&cond_client, &mutex_client);
+                        pthread_mutex_unlock(&mutex_client); 
+                    }
+                }
+
                 else if(strcmp(comando, "fine") == 0){
                     if(argomento != NULL){
                         printf("Comando non valido. Forse cercavi: fine\n");
@@ -309,8 +347,6 @@
         Client_t *client = (Client_t*)args; 
 
         int socket_fd = client->socket_fd; 
-        int registrato = client->registrato; 
-
         while(1){
 
             int retvalue; 
@@ -364,7 +400,14 @@
             switch(msg_server->type){
 
                 case MSG_OK: 
-                    client->registrato = 1; 
+                    if(!client->registrato){
+                        client->registrato = 1; 
+                    }
+                    else{
+                        printf("ARRIVATO ok\n"); 
+                        pthread_cond_signal(&cond_client); 
+                        break; 
+                    }
                     printf("%s\n", msg_server->data); 
                     break; 
                 
@@ -402,6 +445,13 @@
                     printf("Digita un comando qualsiasi per continuare\n");
                     break;
                 
+                case MSG_SHOW_BACHECA:
+                    printf("*****BACHECA*****\n");
+                    printf("%s", msg_server->data);
+                    printf("*****************\n"); 
+                    pthread_cond_signal(&cond_client); 
+                    break; 
+
                 case MSG_SERVER_SHUTDONW:
 
                     printf("%s\n", msg_server->data); 

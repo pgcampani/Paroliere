@@ -141,19 +141,6 @@ void invia_messaggio(int file_descriptor, Messaggio *msg){
 
 }
 
-/*void inizializza_buffer_circolare(Buffer_circolare *buff){
-
-    pthread_mutex_init(&buff->mutex_buffer_c, NULL); 
-    pthread_cond_init(&buff->buffer_not_full, NULL);
-    pthread_cond_init(&buff->buffer_not_empty, NULL); 
-
-    pthread_mutex_lock(&buff->mutex_buffer_c);
-    buff->head = 0; 
-    buff->tail = 0;
-    buff->counter = 0; 
-    pthread_mutex_unlock(&buff->mutex_buffer_c); 
-}*/
-
 void inizializza_array_punteggi(Array_punteggi *arr){
     pthread_mutex_init(&arr->mutex_array, NULL);
     
@@ -164,13 +151,25 @@ void inizializza_array_punteggi(Array_punteggi *arr){
     pthread_mutex_unlock(&arr->mutex_array); 
 }
 
+void inizializza_bacheca(Bacheca *bacheca){
+
+    pthread_mutex_init(&bacheca->mutex_bacheca, NULL); 
+
+    pthread_mutex_lock(&bacheca->mutex_bacheca);
+    bacheca->head = 0; 
+    bacheca->tail = 0; 
+    bacheca->count = 0; 
+
+    pthread_mutex_unlock(&bacheca->mutex_bacheca); 
+}
+
 void inizializza_server_data(Server_data *server_data){
 
     pthread_mutex_init(&server_data->mutex_server_data, NULL); 
     pthread_mutex_init(&server_data->mutex_tempo, NULL); 
 
-    //inizializza_buffer_circolare(&server_data->buffer_punteggi);
     inizializza_array_punteggi(server_data->array_punteggi);
+    inizializza_bacheca(&server_data->bacheca); 
 
     pthread_cond_init(&server_data->cond_punteggi_pronti, NULL); 
     pthread_cond_init(&server_data->cond_classifica_pronta, NULL);
@@ -180,6 +179,7 @@ void inizializza_server_data(Server_data *server_data){
     pthread_mutex_lock(&server_data->mutex_server_data); 
     server_data->lista_giocatori = NULL; 
     server_data->count_giocatori = 0; 
+    server_data->utenti_attivi = 0; 
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
     server_data->root_trie = crea_nodo();
@@ -221,6 +221,7 @@ void inserisci_giocatore(Server_data* server_data, int socket){
     server_data->lista_giocatori = nuovo_giocatore; 
 
     server_data->count_giocatori++; 
+    server_data->utenti_attivi++; 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
@@ -246,42 +247,6 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
-/*void registra_giocatore(Server_data *server_data, int socket, char* username){
-
-    pthread_mutex_lock(&server_data->mutex_server_data); 
-
-    Giocatore *curr = server_data->lista_giocatori; 
-
-    while(curr != NULL){
-        if(strcmp(curr->username, username) == 0){
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
-            return; 
-        }
-        curr = curr->next; 
-    }
-
-    Giocatore *nuovo_giocatore = (Giocatore*)malloc(sizeof(Giocatore)); 
-
-    if(nuovo_giocatore == NULL){
-        perror("Nella malloc");
-        pthread_mutex_unlock(&server_data->mutex_server_data);
-        return; 
-    }
-
-    nuovo_giocatore->socket = socket; 
-    strncpy(nuovo_giocatore->username, username, USERNAME_LENGTH - 1);
-    nuovo_giocatore->username[USERNAME_LENGTH - 1] = '\0';
-    nuovo_giocatore->connesso = 1; 
-    nuovo_giocatore->score = 0; 
-    nuovo_giocatore->tid = pthread_self(); 
-
-    //Inserimento in testa
-    nuovo_giocatore->next = server_data->lista_giocatori;
-    server_data->lista_giocatori = nuovo_giocatore; 
-    server_data->count_giocatori++; 
-
-    pthread_mutex_unlock(&server_data->mutex_server_data); 
-}*/
 
 int login(Server_data* server_data, char *username, int client_fd){
 
@@ -359,6 +324,7 @@ void logout_utente(Server_data *server_data, int socket){
                 curr->score = 0; 
                 curr->connesso = 0; 
                 curr->socket = -1; 
+                server_data->utenti_attivi--; 
             }
             close(socket); 
             pthread_mutex_unlock(&server_data->mutex_server_data);
@@ -594,6 +560,7 @@ int inserisci_punteggio(Array_punteggi *arr, char* username, int score){
         return 1;
     }
     else{
+        pthread_mutex_unlock(&arr->mutex_array); 
         return 0; 
     } 
 }
@@ -609,6 +576,51 @@ void reset_punteggi(Server_data *server_data){
         }
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
+}
+
+int post_bacheca(Bacheca *bacheca, char *username, char *post){
+    pthread_mutex_lock(&bacheca->mutex_bacheca);
+
+    if(bacheca == NULL || username == NULL || post == NULL){
+        pthread_mutex_unlock(&bacheca->mutex_bacheca);
+        return 0; 
+    }
+
+    strncpy(bacheca->post_bacheca[bacheca->tail].username, username, sizeof(bacheca->post_bacheca[bacheca->tail].username) - 1);
+    bacheca->post_bacheca[bacheca->tail].username[sizeof(bacheca->post_bacheca[bacheca->tail].username) - 1] = '\0';
+
+    strncpy(bacheca->post_bacheca[bacheca->tail].post, post, MAX_MSG_LEN);
+    bacheca->post_bacheca[bacheca->tail].post[MAX_MSG_LEN] = '\0'; 
+
+    bacheca->tail = (bacheca->tail + 1) % MAX_MESSAGES;
+    
+    if(bacheca->count < MAX_MESSAGES){
+        bacheca->count++; 
+    }
+    else{
+        //Buffer pieno, sovrascrivo
+        bacheca->head = (bacheca->head + 1) % MAX_MESSAGES;
+    }
+    pthread_mutex_unlock(&bacheca->mutex_bacheca); 
+    return 1; 
+}
+
+void show_bacheca(Bacheca *bacheca, char* output, size_t output_size){
+    pthread_mutex_lock(&bacheca->mutex_bacheca);
+
+    size_t offset = 0;  //Tiene traccia della posizione corrente nel buffer di output
+    int index = bacheca->head;  //Mantiene l'indice del messaggio più vecchio nel buffer
+    for(int i = 0; i < bacheca->count; i++){
+        int written = snprintf(output + offset, output_size - offset, "%s,%s\n", bacheca->post_bacheca[index].username, bacheca->post_bacheca[index].post);
+
+        if(written < 0 || (size_t)written >= output_size - offset){
+            //Se non c'è spazio per scrivere interrompo il ciclo. Evito buffer overflow
+            break;
+        }
+        offset += written; //Aggiorno offset con numero di caratteri scritti
+        index = (index + 1) % MAX_MESSAGES; //Scorro buffer circolare
+    }
+    pthread_mutex_unlock(&bacheca->mutex_bacheca); 
 }
 
 //FUNZIONE DI CLEANUP
@@ -641,6 +653,8 @@ void cleanup(Server_data *server_data){
     pthread_mutex_destroy(&server_data->mutex_tempo); 
 
     pthread_mutex_destroy(&server_data->array_punteggi->mutex_array); 
+
+    pthread_mutex_destroy(&server_data->bacheca.mutex_bacheca); 
 
     free(server_data); 
 }
