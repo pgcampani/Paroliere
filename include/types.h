@@ -97,7 +97,8 @@ typedef struct{
 
 typedef struct{
     int client_fd; 
-    Server_data *server_data; 
+    Server_data *server_data;
+    Giocatore *giocatore;  
     pthread_t messaggi_tid;
     pthread_t punti_tid;  
 }ClientHandlerArgs;

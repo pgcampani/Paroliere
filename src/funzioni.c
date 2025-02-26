@@ -236,6 +236,7 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
         if(temp->socket == socket){
             strncpy(temp->username, username, USERNAME_LENGTH - 1); 
             temp->username[USERNAME_LENGTH - 1] = '\0'; 
+            temp->in_gioco = 1; 
             pthread_mutex_unlock(&server_data->mutex_server_data);  
             return;
         }
@@ -277,6 +278,8 @@ int login(Server_data* server_data, char *username, int client_fd){
     if(esistente != NULL){
         esistente->socket = client_fd;
         esistente->connesso = 1; 
+        esistente->in_gioco = 1; 
+        server_data->utenti_attivi++;
         //Se esiste un nodo temporaneo lo rimuoviamo
         if(prec != NULL){
             if(server_data->lista_giocatori == prec){
@@ -292,7 +295,9 @@ int login(Server_data* server_data, char *username, int client_fd){
                 }
             }
             server_data->count_giocatori--;
+            server_data->utenti_attivi--; 
             free(prec); 
+            prec = NULL; 
         }
  
         pthread_mutex_unlock(&server_data->mutex_server_data);
@@ -324,10 +329,11 @@ void logout_utente(Server_data *server_data, int socket){
                 curr->score = 0; 
                 curr->connesso = 0; 
                 curr->socket = -1; 
+                curr->in_gioco = 0; 
                 server_data->utenti_attivi--; 
             }
-            close(socket); 
             pthread_mutex_unlock(&server_data->mutex_server_data);
+            close(socket); 
             return; 
         }
         prev = curr; 
