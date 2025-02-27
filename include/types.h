@@ -77,11 +77,13 @@ typedef struct{
     int utenti_attivi;  
     char * data_filename; 
     FILE * matrix_file; 
+    FILE * log_file; 
     char * classifica; 
     int classifica_pronta; 
     int punteggi_pronti;
     pthread_mutex_t mutex_server_data;
     pthread_mutex_t mutex_tempo; 
+    pthread_mutex_t mutex_log; 
     pthread_cond_t cond_punteggi_pronti; 
     pthread_cond_t cond_classifica_pronta; 
     pthread_cond_t inizio_partita; 
@@ -147,6 +149,11 @@ void *gestione_tempo_partita(void*);
 
 void *scorer(void*);
 
+//FILE DI LOG
+void inizializza_log(Server_data*, char*); 
+
+void log_event(Server_data*, char*, char*, char*);
+
 //PAROLIERE 
 void matrice_casuale(Server_data *); 
 
@@ -197,6 +204,8 @@ void invia_messaggio(int, Messaggio*);
 void inserisci_giocatore(Server_data*, int); 
 
 void registra_giocatore(Server_data*, int, char*);
+
+int is_alphabetical(char *); 
 
 void aggiorna_punti_giocatore(Server_data*, int, char*); 
 

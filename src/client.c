@@ -459,7 +459,7 @@
                     break; 
 
                 case MSG_PUNTI_FINALI:
-                    printf("\nClassifica finale:\n%s\n", msg_server->data);
+                    printf("\nClassifica finale:%s\n", msg_server->data);
                     rimuovi_parole(client); 
                     printf("Digita un comando qualsiasi per continuare\n");
                     break;

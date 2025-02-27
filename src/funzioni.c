@@ -198,6 +198,29 @@ void inizializza_server_data(Server_data *server_data){
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 }
 
+void inizializza_log(Server_data *server_data, char *filename){
+    server_data->log_file = fopen(filename, "w");
+    if(server_data->log_file == NULL){
+        perror("Errore apertura file log");
+        exit(EXIT_FAILURE); 
+    }
+}
+
+void log_event(Server_data* server_data, char* event, char* username, char* dettagli){
+    pthread_mutex_lock(&server_data->mutex_log); 
+
+    if(server_data->log_file){
+        if(dettagli && dettagli[0] != '\0'){
+            fprintf(server_data->log_file, "%s - %s - Dettagli: %s\n", event, username, dettagli); 
+        }
+        else{
+            fprintf(server_data->log_file, "%s - %s\n", event, username); 
+        }
+    }
+
+    pthread_mutex_unlock(&server_data->mutex_log); 
+}
+
 void inserisci_giocatore(Server_data* server_data, int socket){
 
     pthread_mutex_lock(&server_data->mutex_server_data); 
@@ -235,7 +258,7 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
     while(temp != NULL){
         if(temp->socket == socket){
             strncpy(temp->username, username, USERNAME_LENGTH - 1); 
-            temp->username[USERNAME_LENGTH - 1] = '\0'; 
+            temp->username[USERNAME_LENGTH] = '\0'; 
             temp->in_gioco = 1; 
             pthread_mutex_unlock(&server_data->mutex_server_data);  
             return;
@@ -246,6 +269,18 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
     printf("Socket utente non trovato\n"); 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
+}
+
+int is_alphabetical(char *username){
+
+    for(int i = 0; i < strlen(username); i++){
+        char c = username[i];
+
+        if(!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))){
+            return 0; 
+        }
+    }
+    return 1; 
 }
 
 
@@ -631,15 +666,23 @@ void show_bacheca(Bacheca *bacheca, char* output, size_t output_size){
 //FUNZIONE DI CLEANUP
 void cleanup(Server_data *server_data){
 
-    pthread_mutex_lock(&server_data->mutex_server_data);
+    //Chiusura file di log
+    pthread_mutex_lock(&server_data->mutex_log);
+    if(server_data->log_file){
+        fflush(server_data->log_file);
+        fclose(server_data->log_file);
+    }
+    pthread_mutex_unlock(&server_data->mutex_log);
 
+    pthread_mutex_lock(&server_data->mutex_server_data);
+    //Chiusura file matrici
     if(server_data->matrix_file){
         fclose(server_data->matrix_file); 
         server_data->matrix_file = NULL; 
     }
 
     Giocatore *curr = server_data->lista_giocatori; 
-
+    //Pulizia lista_giocatori
     while(curr != NULL){
 
         Giocatore *rimuovi = curr; 
@@ -650,6 +693,8 @@ void cleanup(Server_data *server_data){
     free_trie(server_data->root_trie); 
     
     free(server_data->classifica); 
+
+    pthread_mutex_destroy(&server_data->mutex_log); 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
 
