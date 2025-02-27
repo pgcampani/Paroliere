@@ -635,7 +635,14 @@
         
                         pthread_mutex_lock(&server_data->mutex_tempo);
                         pthread_cond_broadcast(&server_data->fine_partita); 
+                        pthread_cond_broadcast(&server_data->inizio_partita); 
                         pthread_mutex_unlock(&server_data->mutex_tempo);
+
+                        free(msg->data);
+                        free(msg);
+                        free(risposta);
+                        decrement_active_threads();
+                        pthread_exit(NULL); 
                     }
                     else{
                         risposta->type = MSG_ERR;
@@ -709,15 +716,16 @@
 
             int inserito = 0; 
             giocatore = restituisci_giocatore(server_data, client_fd); 
+            pthread_mutex_lock(&server_data->mutex_server_data); 
             if(giocatore == NULL){
-                printf("Eccolo lì\n"); 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
                 decrement_active_threads();
                 pthread_exit(NULL); 
             }
-            stampa_lista_giocatori(server_data); 
-            pthread_mutex_lock(&server_data->mutex_server_data);
-            printf("sono%s, connesso%d, in_gioco%d, punti%d\n", giocatore->username, giocatore->connesso, giocatore->in_gioco, giocatore->score); 
+            //printf("[HANDLER PUNTEGGI]: "); 
+            //stampa_lista_giocatori(server_data); 
+            //pthread_mutex_lock(&server_data->mutex_server_data);
+            //printf("sono%s, connesso%d, in_gioco%d, punti%d\n", giocatore->username, giocatore->connesso, giocatore->in_gioco, giocatore->score); 
             if(giocatore->connesso && giocatore->in_gioco){
                 pthread_mutex_unlock(&server_data->mutex_server_data); 
                 inserito = inserisci_punteggio(server_data->array_punteggi, giocatore->username, giocatore->score); 
