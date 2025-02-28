@@ -21,6 +21,7 @@
     #define LINEA_DI_COMANDO 1024
 
     int exit_signal = 0; 
+    pthread_t main_thread; 
     Messaggio * msg_server;
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
@@ -40,6 +41,14 @@
         }
     }
 
+    void sigusr1_handler(int signum){
+        if(signum == SIGUSR1){
+            pthread_mutex_lock(&mutex_running);
+            exit_signal = 1;
+            pthread_mutex_unlock(&mutex_running); 
+        }
+    }
+
 
     int main(int argc, char *argv[]){
 
@@ -52,6 +61,15 @@
             exit(EXIT_FAILURE); 
         }
 
+        struct sigaction sa_usr1; 
+        sa_usr1.sa_handler = sigusr1_handler;
+        sigemptyset(&sa_usr1.sa_mask);
+        sa_usr1.sa_flags = 0; 
+        if(sigaction(SIGUSR1, &sa_usr1, NULL) == -1){
+            perror("Errore config SIGUSR1");
+            exit(EXIT_FAILURE);
+        }
+
         if(argc < 2){
             perror("Numero parametri errato!\nUsage:./paroliere_srv nome_server porta_server");
             exit(EXIT_FAILURE); 
@@ -59,6 +77,8 @@
 
         char *nome_server = argv[1]; 
         int porta_server = atoi(argv[2]); 
+
+        main_thread = pthread_self(); 
 
         struct sockaddr_in server_addr; 
 
@@ -85,7 +105,6 @@
         client->registrato = 0; 
         client->socket_fd = socket_fd; 
         client->lista_parole = NULL; 
-        client->termina = 0; 
         pthread_mutex_unlock(&mutex_client); 
  
         pthread_t risposta_handler;
@@ -102,13 +121,15 @@
             exit(EXIT_FAILURE); 
         }
 
+        pthread_mutex_lock(&mutex_client);
         printf("COMANDI:\n");
         printf("- registra_utente nome_utente - per registrarsi\n");
         printf("- login_utente nome utente - per connettersi con uno username già registrato\n"); 
         printf("- matrice - per richiedere il paroliere ed il tempo rimanente alla fine del gioco/pausa\n");
         printf("- parola p - per inviare una parola trovata nel paroliere\n"); 
         printf("- fine - per uscire dal gioco\n"); 
-
+        pthread_mutex_unlock(&mutex_client); 
+        
         while(1){
             pthread_mutex_lock(&mutex_running);
             if(exit_signal){
@@ -124,6 +145,9 @@
             pthread_mutex_unlock(&mutex_client);
 
             if(fgets(input, sizeof(input), stdin) == NULL){
+                if(errno == EINTR && exit_signal){
+                    break; 
+                }
                 printf("Errore lettura comando\n");
                 continue;
             }            
@@ -335,9 +359,6 @@
                         pthread_mutex_lock(&mutex_client);
                         pthread_cond_wait(&cond_client, &mutex_client);
                         pthread_mutex_unlock(&mutex_client); 
-                        if(client->termina){
-                            break; 
-                        }
                     }
                 }
 
@@ -472,10 +493,16 @@
                     break; 
                 
                 case MSG_CANCELLA_UTENTE: 
-                    printf("Chiudo\n"); 
-                    client->termina = 1; 
+                    printf("%s\n", msg_server->data); 
+
+                    pthread_mutex_lock(&mutex_running);
+                    exit_signal = 1;
+                    pthread_mutex_unlock(&mutex_running); 
+
                     pthread_cond_signal(&cond_client);
                     pthread_mutex_unlock(&mutex_client);
+                    
+                    pthread_kill(main_thread, SIGUSR1); 
 
                     free(msg_server->data);
                     free(msg_server);
@@ -486,7 +513,6 @@
                 case MSG_SERVER_SHUTDONW:
 
                     printf("%s\n", msg_server->data); 
-                    printf("Digita un tasto qualsiasi per terminare-->"); 
                     fflush(stdout);
                     pthread_mutex_unlock(&mutex_client); 
 
@@ -494,6 +520,8 @@
                     exit_signal = 1; 
                     pthread_mutex_unlock(&mutex_running);
                     
+                    pthread_kill(main_thread, SIGUSR1); 
+
                     free(msg_server->data);
                     free(msg_server); 
 

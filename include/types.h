@@ -25,7 +25,6 @@
 #define MAX_MSG_LEN 128
 #define MAX_BUFFER 1024
 
-
 #include "trie.h"
 
 typedef struct{
@@ -41,8 +40,9 @@ typedef struct nodoG{
     int score;
     int connesso; 
     int in_gioco; 
-    //unsigned int stato; //0 non connesso, 1 connesso, 2 connesso ma non in gioco, 3 in gioco
+    int disconnesso; 
     pthread_t tid; 
+    int timeout; 
     struct nodoG * next; 
 }Giocatore; 
 
@@ -92,6 +92,7 @@ typedef struct{
     int durata_partita; 
     int partita_in_corso;
     int timer;
+    int timeout;
     int terminazione_thread; 
     Array_punteggi array_punteggi[MAX_CLIENT]; 
     Bacheca bacheca; 
@@ -114,7 +115,6 @@ typedef struct{
     int registrato; 
     int socket_fd; 
     char paroliere_client[DIM_MATRIX][DIM_MATRIX]; 
-    int termina; 
     Parola *lista_parole; 
 }Client_t; 
 
@@ -148,6 +148,8 @@ void *handler_punteggio(void*);
 void *gestione_tempo_partita(void*); 
 
 void *scorer(void*);
+
+void *handler_timeout(void*); 
 
 //FILE DI LOG
 void inizializza_log(Server_data*, char*); 
@@ -201,7 +203,7 @@ Messaggio * leggi_messaggio(int);
 void invia_messaggio(int, Messaggio*); 
 
 //Lista giocatori
-void inserisci_giocatore(Server_data*, int); 
+void inserisci_giocatore(Server_data*, int, int); 
 
 void registra_giocatore(Server_data*, int, char*);
 
