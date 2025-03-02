@@ -174,7 +174,6 @@ void inizializza_server_data(Server_data *server_data){
     server_data->matrix_file = NULL; 
     server_data->partita_in_corso = 1; 
     server_data->root_trie = crea_nodo();
-    server_data->terminazione_thread = 0;  
     if(server_data->root_trie == NULL){
         perror("Nella creazione nodo trie");
         exit(EXIT_FAILURE); 
@@ -236,7 +235,6 @@ void inserisci_giocatore(Server_data* server_data, int socket, int user_timeout)
     server_data->lista_giocatori = nuovo_giocatore; 
     
     server_data->count_giocatori++; 
-    server_data->utenti_attivi++; 
 
     pthread_mutex_unlock(&server_data->mutex_server_data); 
     return;
@@ -253,6 +251,7 @@ void registra_giocatore(Server_data *server_data, int socket, char *username){
             strncpy(temp->username, username, USERNAME_LENGTH - 1); 
             temp->username[USERNAME_LENGTH] = '\0'; 
             temp->in_gioco = 1; 
+            server_data->utenti_attivi++; 
             pthread_mutex_unlock(&server_data->mutex_server_data);  
             return;
         }
@@ -307,6 +306,7 @@ int login(Server_data* server_data, char *username, int client_fd){
         esistente->socket = client_fd;
         esistente->connesso = 1; 
         esistente->in_gioco = 1; 
+        esistente->disconnesso = 0;
         esistente->timeout = server_data->timeout; 
         //Se esiste un nodo temporaneo lo rimuoviamo
         if(prec != NULL){
@@ -323,7 +323,6 @@ int login(Server_data* server_data, char *username, int client_fd){
                 }
             }
             server_data->count_giocatori--;
-            //server_data->utenti_attivi--; 
             free(prec); 
             prec = NULL; 
         }
@@ -369,7 +368,6 @@ void logout_utente(Server_data *server_data, int socket){
                 server_data->utenti_attivi--; 
             }
             pthread_mutex_unlock(&server_data->mutex_server_data);
-            close(socket); 
             return; 
         }
         prev = curr; 
@@ -435,19 +433,19 @@ int cerca_giocatore(Server_data* server_data, char* username){
 
 Giocatore *restituisci_giocatore(Server_data* server_data, int socket_fd){
     
-    pthread_mutex_lock(&server_data->mutex_server_data); 
+    //pthread_mutex_lock(&server_data->mutex_server_data); 
 
     Giocatore *curr = server_data->lista_giocatori;
 
     while(curr != NULL){
         if(curr->socket == socket_fd && curr->disconnesso == 0){
-            pthread_mutex_unlock(&server_data->mutex_server_data); 
+            //pthread_mutex_unlock(&server_data->mutex_server_data); 
             return curr; 
         }
         curr = curr->next; 
     }
 
-    pthread_mutex_unlock(&server_data->mutex_server_data); 
+    //pthread_mutex_unlock(&server_data->mutex_server_data); 
 
     return NULL; 
 }

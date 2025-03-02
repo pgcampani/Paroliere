@@ -93,7 +93,7 @@ typedef struct{
     int partita_in_corso;
     int timer;
     int timeout;
-    int terminazione_thread; 
+    //int terminazione_thread; 
     Array_punteggi array_punteggi[MAX_CLIENT]; 
     Bacheca bacheca; 
 }Server_data; 
@@ -104,6 +104,8 @@ typedef struct{
     Giocatore *giocatore;  
     pthread_t messaggi_tid;
     pthread_t punti_tid;  
+    int termina;
+    pthread_mutex_t mutex_terminazione; 
 }ClientHandlerArgs;
 
 typedef struct Parola{

@@ -1,5 +1,6 @@
 Registrazione - piggi - Dettagli: Registrazione avvenuta con successo
 Registrazione - magi - Dettagli: Registrazione avvenuta con successo
-Registrazione - pharia - Dettagli: Registrazione avvenuta con successo
-Cancellazione - piggi - Dettagli: Utente cancellato
-Login - magi - Dettagli: Login avvenuto con successo
+Classifica - 
+piggi,0
+Classifica - 
+magi,0
