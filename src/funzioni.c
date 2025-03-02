@@ -159,6 +159,7 @@ void inizializza_server_data(Server_data *server_data){
 
     pthread_mutex_init(&server_data->mutex_server_data, NULL); 
     pthread_mutex_init(&server_data->mutex_tempo, NULL); 
+    pthread_mutex_init(&server_data->mutex_log, NULL); 
 
     inizializza_array_punteggi(server_data->array_punteggi);
     inizializza_bacheca(&server_data->bacheca); 
@@ -326,9 +327,8 @@ int login(Server_data* server_data, char *username, int client_fd){
             free(prec); 
             prec = NULL; 
         }
- 
+        server_data->utenti_attivi++; 
         pthread_mutex_unlock(&server_data->mutex_server_data);
-        printf("Giocatore %s connesso con socket %d\n", esistente->username, esistente->socket); 
         return 1; 
     }
 
@@ -714,6 +714,14 @@ void cleanup(Server_data *server_data){
     pthread_mutex_destroy(&server_data->array_punteggi->mutex_array); 
 
     pthread_mutex_destroy(&server_data->bacheca.mutex_bacheca); 
+
+    pthread_cond_destroy(&server_data->cond_classifica_pronta);
+
+    pthread_cond_destroy(&server_data->cond_punteggi_pronti); 
+
+    pthread_cond_destroy(&server_data->fine_partita); 
+    
+    pthread_cond_destroy(&server_data->inizio_partita); 
 
     free(server_data); 
 }

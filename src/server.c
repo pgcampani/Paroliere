@@ -121,7 +121,7 @@
         int durata_in_minuti = 3; 
         int tempo_in_minuti = 1; 
         unsigned int rnd_seed = 0; 
-        char * diz = NULL; 
+        char * diz = "dizionario_ita.txt"; 
 
         //Controllo parametri opzionali 
         int opt, option_index = 0; 
@@ -132,10 +132,10 @@
             {"seed", required_argument, 0, 's'},
             {"diz", required_argument, 0, 'z'},
             {"disconnetti-dopo", required_argument, 0, 'i'},
-            {0, 0, 0, 0, 0}
+            {0, 0, 0, 0}
         };
 
-        while((opt = getopt_long(argc, argv, "m:d:s:z", long_options, &option_index)) != -1){
+        while((opt = getopt_long(argc, argv, "m:d:s:z:i", long_options, &option_index)) != -1){
             switch (opt){
                 case 'm': 
                     data_filename = optarg;
@@ -177,7 +177,14 @@
 
         server_addr.sin_family = AF_INET; 
         server_addr.sin_port = htons(porta_server); 
-        server_addr.sin_addr.s_addr = INADDR_ANY; 
+        if (strcmp(nome_server, "localhost") == 0) {
+            nome_server = "127.0.0.1"; 
+        }
+        
+        if (inet_pton(AF_INET, nome_server, &server_addr.sin_addr) <= 0) {
+            perror("Errore nella conversione dell'indirizzo IP");
+            exit(EXIT_FAILURE);
+        }
 
         //Socket
         SYSC(server_fd, socket(AF_INET, SOCK_STREAM, 0), "Nella socket"); 
@@ -202,7 +209,7 @@
         server_data->data_filename = data_filename; 
         server_data->durata_partita = durata_in_minuti;
         server_data->timeout = tempo_in_minuti * 60; 
-        server_data->root_trie = load_file(server_data->root_trie, "dizionario_ita.txt");
+        server_data->root_trie = load_file(server_data->root_trie, diz);
 
         global_server_data = server_data; 
 

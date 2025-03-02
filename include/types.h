@@ -105,7 +105,6 @@ typedef struct{
     pthread_t messaggi_tid;
     pthread_t punti_tid;  
     int termina;
-    pthread_mutex_t mutex_terminazione; 
 }ClientHandlerArgs;
 
 typedef struct Parola{

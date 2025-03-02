@@ -22,7 +22,7 @@
 
     int exit_signal = 0; 
     pthread_t main_thread; 
-    Messaggio * msg_server;
+    //Messaggio * msg_server;
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
     pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
@@ -89,7 +89,15 @@
 
         server_addr.sin_family = AF_INET; 
         server_addr.sin_port = htons(porta_server); 
-        server_addr.sin_addr.s_addr = INADDR_ANY; 
+
+        if (strcmp(nome_server, "localhost") == 0){
+            nome_server = "127.0.0.1"; 
+        }
+        
+        if (inet_pton(AF_INET, nome_server, &server_addr.sin_addr) <= 0){
+            perror("Errore nella conversione dell'indirizzo IP");
+            exit(EXIT_FAILURE);
+        }
 
         //Connect
         SYSC(retvalue, connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)), "Nella connect"); 
@@ -375,9 +383,10 @@
         close(client->socket_fd); 
         pthread_cancel(risposta_handler); 
         pthread_join(risposta_handler, NULL);
-        if(msg_server){
-            free(msg_server); 
-        }
+        
+        pthread_mutex_destroy(&mutex_client);
+        pthread_mutex_destroy(&mutex_running); 
+        pthread_cond_destroy(&cond_client); 
         free(client); 
         free(msg); 
         return 0;
@@ -386,7 +395,7 @@
     void *server_handler(void* args){
 
         Client_t *client = (Client_t*)args; 
-
+        Messaggio * msg_server;
         int socket_fd = client->socket_fd; 
         while(1){
 
