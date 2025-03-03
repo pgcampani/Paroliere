@@ -24,6 +24,7 @@
 #define MAX_MESSAGES 8
 #define MAX_MSG_LEN 128
 #define MAX_BUFFER 1024
+#define PAUSE 60
 
 #include "trie.h"
 

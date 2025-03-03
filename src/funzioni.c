@@ -109,8 +109,7 @@ Messaggio* leggi_messaggio(int file_descriptor){
     msg->length = 0;
 
     SYSC(retvalue, read(file_descriptor, &msg->length, sizeof(unsigned int)), "Nella read"); 
-    if(retvalue == -1 && errno == EINTR){
-        printf("VOGLIONO CHIUDERE\n"); 
+    if(retvalue == -1){
         free(msg);
         return NULL; 
     }
@@ -354,7 +353,6 @@ void logout_utente(Server_data *server_data, int socket){
                 else{
                     prev->next = curr->next;
                 }
-                printf("No username\n"); 
                 server_data->utenti_attivi--; 
                 server_data->count_giocatori--; 
                 free(curr); 
@@ -387,8 +385,6 @@ void cancella_utente(Server_data* server_data, int socket){
         prev = temp; 
         temp = temp->next; 
     }
-
-    printf("Rimuovendo giocatore con socket: %d\n", socket); 
 
     if(temp == NULL){
         printf("Giocatore non trovato\n"); 
@@ -592,14 +588,6 @@ void to_uppercase(char *str){
 int inserisci_punteggio(Array_punteggi *arr, char* username, int score){
     pthread_mutex_lock(&arr->mutex_array);
 
-    for (int i = 0; i < arr->counter_punteggi; i++) {
-        if (strcmp(arr->array[i].nome, username) == 0) {
-            // Giocatore già presente, aggiorna solo il punteggio
-            arr->array[i].punti = score;
-            return 0;  // Non inserire nuovamente
-        }
-    }
-
     if(arr->counter_punteggi < MAX_CLIENT){
         strncpy(arr->array[arr->counter_punteggi].nome, username, strlen(username)); 
         arr->array[arr->counter_punteggi].nome[strlen(username)] = '\0'; 
@@ -657,9 +645,14 @@ int post_bacheca(Bacheca *bacheca, char *username, char *post){
 void show_bacheca(Bacheca *bacheca, char* output, size_t output_size){
     pthread_mutex_lock(&bacheca->mutex_bacheca);
 
-    size_t offset = 0;  //Tiene traccia della posizione corrente nel buffer di output
+    output[0] = '\0'; //Svuoto l'output per pulire da eventuali residui di stampe
+
+    size_t offset = 0;  //Posizione corrente nel buffer di output
+
     int index = bacheca->head;  //Mantiene l'indice del messaggio più vecchio nel buffer
+
     for(int i = 0; i < bacheca->count; i++){
+        //Scorro tutti i messaggi nella bacheca e li inserisco nell'output
         int written = snprintf(output + offset, output_size - offset, "%s,%s\n", bacheca->post_bacheca[index].username, bacheca->post_bacheca[index].post);
 
         if(written < 0 || (size_t)written >= output_size - offset){
@@ -703,17 +696,17 @@ void cleanup(Server_data *server_data){
     
     free(server_data->classifica); 
 
-    pthread_mutex_destroy(&server_data->mutex_log); 
-
     pthread_mutex_unlock(&server_data->mutex_server_data); 
+
+    pthread_mutex_destroy(&server_data->mutex_log); 
 
     pthread_mutex_destroy(&server_data->mutex_server_data);
 
-    pthread_mutex_destroy(&server_data->mutex_tempo); 
-
     pthread_mutex_destroy(&server_data->array_punteggi->mutex_array); 
 
-    pthread_mutex_destroy(&server_data->bacheca.mutex_bacheca); 
+    pthread_mutex_destroy(&server_data->bacheca.mutex_bacheca);
+    
+    pthread_mutex_destroy(&server_data->mutex_tempo); 
 
     pthread_cond_destroy(&server_data->cond_classifica_pronta);
 

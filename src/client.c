@@ -22,7 +22,6 @@
 
     int exit_signal = 0; 
     pthread_t main_thread; 
-    //Messaggio * msg_server;
     pthread_mutex_t mutex_running = PTHREAD_MUTEX_INITIALIZER; 
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER; 
     pthread_cond_t cond_client = PTHREAD_COND_INITIALIZER; 
@@ -46,6 +45,12 @@
             pthread_mutex_lock(&mutex_running);
             exit_signal = 1;
             pthread_mutex_unlock(&mutex_running); 
+
+            pthread_mutex_lock(&mutex_client);
+
+            pthread_cond_broadcast(&cond_client);
+
+            pthread_mutex_unlock(&mutex_client); 
         }
     }
 
@@ -180,7 +185,9 @@
             char * argomento = strtok(NULL, " "); 
 
             if(comando == NULL){
+                pthread_mutex_lock(&mutex_client); 
                 printf("Nessun comando inserito\n"); 
+                pthread_mutex_unlock(&mutex_client); 
                 continue; 
             }
 
@@ -329,9 +336,7 @@
                         
                         invia_messaggio(socket_fd, msg);
                         pthread_mutex_lock(&mutex_client);
-                        printf("Attendo risposta da server\n"); 
                         pthread_cond_wait(&cond_client, &mutex_client);
-                        printf("Svegliato\n"); 
                         pthread_mutex_unlock(&mutex_client); 
                     }
                 }
@@ -491,7 +496,7 @@
                 case MSG_PUNTI_FINALI:
                     printf("\nClassifica finale:%s\n", msg_server->data);
                     rimuovi_parole(client); 
-                    printf("Digita un comando qualsiasi per continuare\n");
+                    printf("Digita un comando qualsiasi per continuare--> ");
                     break;
                 
                 case MSG_SHOW_BACHECA:
