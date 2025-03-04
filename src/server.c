@@ -232,7 +232,6 @@
                 pthread_mutex_unlock(&mutex_running); 
                 
                 pthread_cancel(thread_tempo); 
-                pthread_cancel(thread_timeout); 
 
                 perror("Nella accept"); 
                 free(args); 
@@ -332,8 +331,6 @@
             //Faccio un controllo sul valore di ritorno della read per controllare se il client ha chiuso la connessione
             if(retvalue == 0){
                 logout_utente(server_data, client_fd); 
-
-                log_event(server_data, "Logout", msg->data, "Utente disconnesso");
 
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 client_args->termina = 1; 
@@ -1092,9 +1089,6 @@ void *handler_timeout(void *args){
                 free(msg); 
 
                 logout_utente(server_data, temp->socket); 
-
-                log_event(server_data, "Logout", msg->data, "Utente disconnesso per inattività");
-
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 temp = next_temp; 
             }

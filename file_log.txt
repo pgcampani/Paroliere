@@ -1,0 +1,8 @@
+Registrazione - piggi - Dettagli: Registrazione avvenuta con successo
+Registrazione - pippo - Dettagli: Registrazione avvenuta con successo
+Registrazione - pluto - Dettagli: Registrazione avvenuta con successo
+Cancellazione - pippo - Dettagli: Utente cancellato
+Login - piggi - Dettagli: Login avvenuto con successo
+Classifica - 
+pluto,0
+piggi,0
