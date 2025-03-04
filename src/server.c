@@ -1086,9 +1086,13 @@ void *handler_timeout(void *args){
                 msg->data = "Espulso per inattivita'";
                 msg->length = strlen(msg->data); 
                 invia_messaggio(temp->socket, msg);
+                
                 free(msg); 
 
-                logout_utente(server_data, temp->socket); 
+                logout_utente(server_data, temp->socket);
+                
+                log_event(server_data, "Logout", temp->username, "Espulso per inattività"); 
+
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 temp = next_temp; 
             }
