@@ -199,9 +199,9 @@
 
         pthread_t thread_tempo, thread_scorer, thread_timeout; 
 
-        pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)server_data);
-        pthread_create(&thread_scorer, NULL, scorer, (void*)server_data);
-        pthread_create(&thread_timeout, NULL, handler_timeout, (void*)server_data);
+        SYSC(retvalue, pthread_create(&thread_tempo, NULL, gestione_tempo_partita, (void*)server_data), "Nella pthread_create");
+        SYSC(retvalue, pthread_create(&thread_scorer, NULL, scorer, (void*)server_data), "Nella pthread_create");
+        SYSC(retvalue, pthread_create(&thread_timeout, NULL, handler_timeout, (void*)server_data), "Nella pthread_create");
 
         while(1){
 
@@ -212,6 +212,7 @@
             }
             pthread_mutex_unlock(&mutex_running);
 
+            //Allocazione memoria argomenti da passare ai thread ceh gestiscono il client
             ClientHandlerArgs *args = (ClientHandlerArgs*)malloc(sizeof(ClientHandlerArgs)); 
             if(args == NULL){
                 perror("Nella malloc");
@@ -231,6 +232,7 @@
                 pthread_mutex_unlock(&mutex_running); 
                 
                 pthread_cancel(thread_tempo); 
+                pthread_cancel(thread_timeout); 
 
                 perror("Nella accept"); 
                 free(args); 
@@ -286,11 +288,8 @@
 
         ClientHandlerArgs *client_args = (ClientHandlerArgs*)args; 
 
-        //int client_fd = client_args->client_fd;
         Server_data *server_data = client_args->server_data;
         int retvalue;
-
-        //Giocatore *giocatore = client_args->giocatore; 
         
         Messaggio *msg, *risposta; 
 
@@ -334,8 +333,9 @@
             if(retvalue == 0){
                 logout_utente(server_data, client_fd); 
 
+                log_event(server_data, "Logout", msg->data, "Utente disconnesso");
+
                 pthread_mutex_lock(&server_data->mutex_server_data);
-                //server_data->terminazione_thread = 1; 
                 client_args->termina = 1; 
                 pthread_cond_broadcast(&server_data->cond_classifica_pronta);  
                 pthread_mutex_unlock(&server_data->mutex_server_data);
@@ -417,6 +417,7 @@
                     pthread_mutex_lock(&server_data->mutex_server_data); 
 
                     if(server_data->count_giocatori > MAX_CLIENT){ 
+                        //Se supera il numero massimo di client connessi, invia messaggio al client e lo fa terminare
                         risposta->type = MSG_CANCELLA_UTENTE; 
                         risposta->data = "Numero massimo giocatori raggiunto. Riprova più tardi";
                         risposta->length = strlen(risposta->data); 
@@ -444,11 +445,8 @@
 
                     pthread_mutex_unlock(&server_data->mutex_server_data); 
                     
-                    registra_giocatore(server_data, client_fd, msg->data);
-
-                    pthread_mutex_lock(&server_data->mutex_server_data); 
-                    giocatore->timeout = server_data->timeout;
-                    pthread_mutex_unlock(&server_data->mutex_server_data); 
+                    //Aggiorno la lista dei giocatori registrando l'username del giocatore
+                    registra_giocatore(server_data, client_fd, msg->data); 
 
                     log_event(server_data, "Registrazione", msg->data, "Registrazione avvenuta con successo");
 
@@ -599,7 +597,7 @@
 
                     int log = 0; 
                     log = login(server_data, msg->data, client_fd); 
-                    //giocatore = restituisci_giocatore(server_data, client_fd); 
+
                     if(log){
 
                         log_event(server_data, "Login", msg->data, "Login avvenuto con successo"); 
@@ -781,6 +779,7 @@
                 }
                 pthread_mutex_unlock(&mutex_running);
             }
+
             pthread_mutex_lock(&server_data->mutex_server_data);
             if(client_args->termina){
                 pthread_mutex_unlock(&server_data->mutex_server_data);
@@ -897,6 +896,8 @@
             pthread_mutex_lock(&server_data->mutex_tempo);
 
             if(server_data->partita_in_corso){
+                //La partita finisce
+
                 pthread_mutex_lock(&mutex_running);
 
                 if(!running){
@@ -913,14 +914,17 @@
                 timer = server_data->timer; 
 
                 pthread_mutex_unlock(&server_data->mutex_tempo); 
+                //Genero la nuova matrice per la prossima partita
                 genera_matrice(server_data);
                 pthread_mutex_lock(&server_data->mutex_server_data);
+                //Reset della variabile per la classifica
                 server_data->classifica_pronta = 0; 
                 stampa_matrice(server_data->paroliere); 
                 pthread_mutex_unlock(&server_data->mutex_server_data);
 
             }
             else{
+                //La partita inizia, aggiorno le variabili
                 pthread_mutex_lock(&mutex_running);
 
                 if(!running){
@@ -949,7 +953,6 @@
                     pthread_mutex_unlock(&server_data->mutex_tempo); 
                     timer--;
                     sleep(1);
-                    pthread_testcancel();
                 }
                 else{
                     pthread_mutex_unlock(&mutex_running); 
@@ -992,6 +995,8 @@ void *scorer(void* args){
 
         pthread_mutex_lock(&server_data->array_punteggi->mutex_array);
 
+        //Copio i valori dei punteggi in un buffer temporaneo
+
         int n = server_data->array_punteggi->counter_punteggi;
         Punti_fine temp_buffer[MAX_CLIENT];
         for(int i = 0; i < n; i++){
@@ -1000,8 +1005,10 @@ void *scorer(void* args){
 
         pthread_mutex_unlock(&server_data->array_punteggi->mutex_array);
 
+        //Ordino in modo decrescente per stilare la classifica
         qsort(temp_buffer, n, sizeof(Punti_fine), ordina_punteggi); 
 
+        //Creo una stringa per la classifica in formato csv
         csv[0] = '\0';
         for(int i = 0; i < server_data->array_punteggi->counter_punteggi; i++){
             char line[LINE_SIZE];
@@ -1014,6 +1021,7 @@ void *scorer(void* args){
         strncpy(server_data->classifica, csv, MAX_BUFFER - 1);
         server_data->classifica[MAX_BUFFER - 1] = '\0';
 
+        //La classifica è pronta, sveglio il thread per comunicarla al client
         server_data->classifica_pronta = 1;
         pthread_cond_broadcast(&server_data->cond_classifica_pronta);
 
@@ -1023,8 +1031,10 @@ void *scorer(void* args){
 
         log_event(server_data, "Classifica", csv, ""); 
 
+        //Azzero i punteggi in lista
         reset_punteggi(server_data); 
 
+        //Azzero l'array con i punteggi e i relativi nomi
         pthread_mutex_lock(&server_data->array_punteggi->mutex_array); 
         for(int i = 0; i < MAX_CLIENT; i++){
             server_data->array_punteggi->array[i].punti = 0; 
@@ -1069,6 +1079,8 @@ void *handler_timeout(void *args){
             }
 
             if(temp->timeout == 0){
+                //Se il timeout è arrivato a 0, disconnetto il client senza rimuoverlo dalla lista
+
                 Giocatore *next_temp = temp->next;
                 pthread_mutex_unlock(&server_data->mutex_server_data); 
 
@@ -1080,6 +1092,9 @@ void *handler_timeout(void *args){
                 free(msg); 
 
                 logout_utente(server_data, temp->socket); 
+
+                log_event(server_data, "Logout", msg->data, "Utente disconnesso per inattività");
+
                 pthread_mutex_lock(&server_data->mutex_server_data);
                 temp = next_temp; 
             }

@@ -496,7 +496,7 @@
                 case MSG_PUNTI_FINALI:
                     printf("\nClassifica finale:%s\n", msg_server->data);
                     rimuovi_parole(client); 
-                    printf("Digita un comando qualsiasi per continuare--> ");
+                    printf("Digita un comando qualsiasi per continuare\n");
                     break;
                 
                 case MSG_SHOW_BACHECA:

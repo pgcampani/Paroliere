@@ -19,7 +19,7 @@
 
 #define DIM_MATRIX 4
 #define LINE_SIZE 128
-#define MAX_CLIENT 4
+#define MAX_CLIENT 32
 #define USERNAME_LENGTH 11
 #define MAX_MESSAGES 8
 #define MAX_MSG_LEN 128
@@ -41,7 +41,6 @@ typedef struct nodoG{
     int score;
     int connesso; 
     int in_gioco; 
-    int disconnesso; 
     pthread_t tid; 
     int timeout; 
     struct nodoG * next; 
@@ -94,7 +93,6 @@ typedef struct{
     int partita_in_corso;
     int timer;
     int timeout;
-    //int terminazione_thread; 
     Array_punteggi array_punteggi[MAX_CLIENT]; 
     Bacheca bacheca; 
 }Server_data; 

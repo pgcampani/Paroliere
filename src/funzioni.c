@@ -92,7 +92,6 @@ void stampa_matrice(char paroliere[DIM_MATRIX][DIM_MATRIX]){
 }
 
 //FUNZIONI PER LO SCAMBIO DI MESSAGGI
-
 Messaggio* leggi_messaggio(int file_descriptor){
 
     int retvalue; 
@@ -226,7 +225,6 @@ void inserisci_giocatore(Server_data* server_data, int socket, int user_timeout)
     nuovo_giocatore->connesso = 1; 
     nuovo_giocatore->in_gioco = 0; 
     nuovo_giocatore->score = 0; 
-    nuovo_giocatore->disconnesso = 0; 
     nuovo_giocatore->timeout = user_timeout; 
     nuovo_giocatore->tid = pthread_self(); 
     
@@ -306,7 +304,6 @@ int login(Server_data* server_data, char *username, int client_fd){
         esistente->socket = client_fd;
         esistente->connesso = 1; 
         esistente->in_gioco = 1; 
-        esistente->disconnesso = 0;
         esistente->timeout = server_data->timeout; 
         //Se esiste un nodo temporaneo lo rimuoviamo
         if(prec != NULL){
@@ -343,8 +340,6 @@ void logout_utente(Server_data *server_data, int socket){
 
     while(curr != NULL){
         if(curr->socket == socket){
-
-            curr->disconnesso = 1; 
 
             if(curr->username[0] == '\0'){
                 if(prev == NULL){
@@ -434,7 +429,7 @@ Giocatore *restituisci_giocatore(Server_data* server_data, int socket_fd){
     Giocatore *curr = server_data->lista_giocatori;
 
     while(curr != NULL){
-        if(curr->socket == socket_fd && curr->disconnesso == 0){
+        if(curr->socket == socket_fd && curr->connesso){
             //pthread_mutex_unlock(&server_data->mutex_server_data); 
             return curr; 
         }
