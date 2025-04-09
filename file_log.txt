@@ -1,4 +1,8 @@
-Registrazione - piggi - Dettagli: Registrazione avvenuta con successo
 Registrazione - pippo - Dettagli: Registrazione avvenuta con successo
-Parola inviata - pippo - Dettagli: TESA
-Logout - piggi - Dettagli: Espulso per inattività
+Registrazione - pluto - Dettagli: Registrazione avvenuta con successo
+Logout - pippo - Dettagli: Espulso per inattività
+Login - pippo - Dettagli: Login avvenuto con successo
+Parola inviata - pluto - Dettagli: BOZ
+Classifica - 
+pluto,0
+pippo,0
