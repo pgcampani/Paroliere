@@ -169,6 +169,6 @@ Per l'avvio dei **Client**:
 ```
 
 dove:
-- paroliere_cl `e il nome dell’eseguibile;
-- nome_server `e il nome del server al quale collegarsi;
-- porta_server `e il numero della porta alla quale collegarsi;
+- paroliere_cl é il nome dell’eseguibile;
+- nome_server é il nome del server al quale collegarsi;
+- porta_server é il numero della porta alla quale collegarsi;
